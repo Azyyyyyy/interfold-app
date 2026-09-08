@@ -10,6 +10,7 @@ import app.interfold.app.utils.FirebasePlatform
 import app.interfold.app.utils.PlatformEvent
 import app.interfold.app.utils.SETTINGS_LOCALSTORAGE_KEY
 import app.interfold.app.utils.globalSerializer
+import app.interfold.app.utils.migrateLegacyWasmSettings
 import app.interfold.app.utils.platformUtilities
 import app.interfold.app.utils.tryRefreshWebFCMToken
 import com.arkivanov.decompose.DefaultComponentContext
@@ -29,6 +30,7 @@ import kotlin.time.Clock
 
 @OptIn(ExperimentalComposeUiApi::class, kotlinx.coroutines.DelicateCoroutinesApi::class)
 fun main() {
+  migrateLegacyWasmSettings()
   val lifecycle = LifecycleRegistry()
   // Shared with `platform.wasm.kt` so the reinit path fired from
   // `SettingsInterfaceImpl.setToken` on login completion can emit into the same

@@ -189,6 +189,16 @@ jobs:
     timeout-minutes: 40
     permissions:
       contents: read
+    # xcodebuild invokes Gradle through CocoaPods' Build shared script, which
+    # does not pass -Pkotlin.incremental.native=false. The env var is the
+    # Gradle equivalent and covers that nested invocation plus the explicit
+    # compile/test steps below. Needed because Kotlin/Native incremental
+    # compilation asserts on iosSimulatorArm64 Debug:
+    #   Failed to build cache for [...]/multiplatform-markdown-renderer[...]
+    #   java.lang.AssertionError: Lowering ReturnsInsertion: phases [Enums]
+    #   are required, but not satisfied
+    env:
+      ORG_GRADLE_PROJECT_kotlin.incremental.native: "false"
 
     steps:
       - name: Checkout

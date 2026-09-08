@@ -64,7 +64,7 @@ private external fun registerServiceWorker(url: String)
  * actually depends on. The Cache Storage entry is a defensive nicety so background
  * push handlers don't fall back to a stale config from the previous server.
  */
-@JsFun("() => { if ('caches' in self) { caches.delete('interfold-firebase-config-v1').catch(err => console.warn('Failed to delete Firebase config cache:', err)); } }")
+@JsFun("() => { if ('caches' in self) { caches.delete('interfold-firebase-config-v1').catch(err => console.warn('Failed to delete Firebase config cache:', err)); caches.delete('octocon-firebase-config-v1').catch(err => console.warn('Failed to delete legacy Firebase config cache:', err)); } }")
 private external fun deleteServiceWorkerFirebaseConfigCache()
 
 /**
@@ -113,6 +113,7 @@ private val base64 = Base64.withPadding(Base64.PaddingOption.PRESENT_OPTIONAL)
 
 val platformUtilities = object : PlatformUtilities {
     override fun initialize(settings: Settings) {
+        migrateLegacyWasmSettings()
         if (isAppInstalled()) {
             if (!settings.installServiceWorker) {
                 saveSettings(settings.copy(installServiceWorker = true))
@@ -138,6 +139,7 @@ val platformUtilities = object : PlatformUtilities {
     }
 
     override fun saveSettings(settings: Settings) {
+        migrateLegacyWasmSettings()
         val oldSettings = getSettings()
         localStorage.setItem(SETTINGS_LOCALSTORAGE_KEY, settings.serialize())
 
@@ -234,7 +236,7 @@ val platformUtilities = object : PlatformUtilities {
     }
 
     private fun getSettings(): Settings? {
-
+        migrateLegacyWasmSettings()
         val currentSettingsJson = localStorage.getItem(SETTINGS_LOCALSTORAGE_KEY)
         return if (currentSettingsJson != null) {
             try {
@@ -405,6 +407,17 @@ val platformUtilities = object : PlatformUtilities {
 }
 
 const val SETTINGS_LOCALSTORAGE_KEY = "interfold_settings"
+private const val LEGACY_SETTINGS_LOCALSTORAGE_KEY = "octocon_settings"
+
+fun migrateLegacyWasmSettings() {
+  if (localStorage.getItem(SETTINGS_LOCALSTORAGE_KEY) != null) {
+    localStorage.removeItem(LEGACY_SETTINGS_LOCALSTORAGE_KEY)
+    return
+  }
+  val legacy = localStorage.getItem(LEGACY_SETTINGS_LOCALSTORAGE_KEY) ?: return
+  localStorage.setItem(SETTINGS_LOCALSTORAGE_KEY, legacy)
+  localStorage.removeItem(LEGACY_SETTINGS_LOCALSTORAGE_KEY)
+}
 
 actual object BuildConfig : BuildConfigInterface {
     override fun isDebug(): Boolean {

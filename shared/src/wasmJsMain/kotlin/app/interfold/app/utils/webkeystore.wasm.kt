@@ -24,11 +24,26 @@ private external fun idbGetEncryptionKeyAsync(): Promise<JsAny?>
 @JsFun("() => new Promise((resolve,reject) => { try { const DB_NAME='interfold_keystore'; const KEYS='keys'; const request = indexedDB.open(DB_NAME,1); request.onupgradeneeded = (e) => { const db = e.target.result; if (!db.objectStoreNames.contains(KEYS)) db.createObjectStore(KEYS); }; request.onsuccess = (e) => { const db = e.target.result; try { const tx = db.transaction(KEYS,'readwrite'); const store = tx.objectStore(KEYS); store.delete('encryption_key'); tx.oncomplete = () => { db.close(); resolve(true); }; tx.onerror = (ev) => { db.close(); reject(ev); }; } catch(err) { db.close(); reject(err); } }; request.onerror = (ev) => reject(ev); } catch(err) { reject(err); } })")
 private external fun idbDeleteEncryptionKeyAsync(): Promise<JsAny?>
 
+@JsFun("() => new Promise((resolve) => { try { const OLD_NAME='octocon_keystore'; const NEW_NAME='interfold_keystore'; const KEYS='keys'; const META='meta'; const openNew=indexedDB.open(NEW_NAME,1); openNew.onupgradeneeded=(e)=>{ const db=e.target.result; if(!db.objectStoreNames.contains(KEYS)) db.createObjectStore(KEYS); if(!db.objectStoreNames.contains(META)) db.createObjectStore(META); }; openNew.onerror=()=>resolve(false); openNew.onsuccess=(e)=>{ const newDb=e.target.result; try { const tx=newDb.transaction(KEYS,'readonly'); const getExisting=tx.objectStore(KEYS).get('encryption_key'); getExisting.onerror=()=>{ newDb.close(); resolve(false); }; getExisting.onsuccess=()=>{ if(getExisting.result){ newDb.close(); resolve(true); return; } const openOld=indexedDB.open(OLD_NAME); openOld.onupgradeneeded=(ev)=>{ try { ev.target.transaction.abort(); } catch(err) {} }; openOld.onerror=()=>{ newDb.close(); resolve(false); }; openOld.onsuccess=(oe)=>{ const oldDb=oe.target.result; if(!oldDb.objectStoreNames.contains(KEYS)){ oldDb.close(); newDb.close(); resolve(false); return; } const stores=[KEYS]; if(oldDb.objectStoreNames.contains(META)) stores.push(META); const ot=oldDb.transaction(stores,'readonly'); const entryReq=ot.objectStore(KEYS).get('encryption_key'); entryReq.onerror=()=>{ oldDb.close(); newDb.close(); resolve(false); }; entryReq.onsuccess=()=>{ const entry=entryReq.result; if(!entry){ oldDb.close(); newDb.close(); resolve(false); return; } const finish=(jwk)=>{ try { const names=jwk?[KEYS,META]:[KEYS]; const wt=newDb.transaction(names,'readwrite'); wt.objectStore(KEYS).put(entry,'encryption_key'); if(jwk) wt.objectStore(META).put(jwk,'wrapping_key_jwk'); wt.onerror=()=>{ oldDb.close(); newDb.close(); resolve(false); }; wt.oncomplete=()=>{ oldDb.close(); newDb.close(); const del=indexedDB.deleteDatabase(OLD_NAME); del.onsuccess=()=>resolve(true); del.onerror=()=>resolve(true); del.onblocked=()=>resolve(true); }; } catch(err) { oldDb.close(); newDb.close(); resolve(false); } }; if(oldDb.objectStoreNames.contains(META)){ const jwkReq=ot.objectStore(META).get('wrapping_key_jwk'); jwkReq.onerror=()=>finish(null); jwkReq.onsuccess=()=>finish(jwkReq.result); } else { finish(null); } }; }; }; } catch(err) { newDb.close(); resolve(false); } }; } catch(err) { resolve(false); } })")
+private external fun idbMigrateLegacyKeystoreAsync(): Promise<JsAny?>
+
+private var legacyKeystoreMigrated = false
+
+private suspend fun migrateLegacyKeystoreIfNeeded() {
+  if (legacyKeystoreMigrated) return
+  try {
+    idbMigrateLegacyKeystoreAsync().await<JsAny?>()
+  } catch (_: Throwable) {
+  }
+  legacyKeystoreMigrated = true
+}
+
 // Returns true if the key was successfully persisted, false otherwise. Errors are logged
 // but not rethrown so the caller can decide how to recover (e.g. clear stale state in
 // localStorage so the user isn't stuck claiming to have a key that isn't actually there).
 suspend fun webStoreEncryptionKey(keyBase64: String): Boolean {
   return try {
+    migrateLegacyKeystoreIfNeeded()
     // Await as JsAny? to avoid illegal-cast when JS resolves null/undefined/other types
     idbStoreEncryptionKeyAsync(keyBase64).await<JsAny?>()
     true
@@ -40,6 +55,7 @@ suspend fun webStoreEncryptionKey(keyBase64: String): Boolean {
 
 suspend fun webRetrieveEncryptionKey(): String? {
   return try {
+    migrateLegacyKeystoreIfNeeded()
     val res = idbGetEncryptionKeyAsync().await<JsAny?>()
     res?.toString()
   } catch (e: Throwable) {
@@ -50,6 +66,7 @@ suspend fun webRetrieveEncryptionKey(): String? {
 
 suspend fun webDeleteEncryptionKey() {
   try {
+    migrateLegacyKeystoreIfNeeded()
     idbDeleteEncryptionKeyAsync().await<JsAny?>()
   } catch (e: Throwable) {
     platformLog("SETTINGS", "Failed to delete encryption key from IndexedDB: $e")
