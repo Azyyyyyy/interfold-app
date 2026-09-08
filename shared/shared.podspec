@@ -1,17 +1,17 @@
 Pod::Spec.new do |spec|
     spec.name                     = 'shared'
     spec.version                  = '1.0'
-    spec.homepage                 = 'https://octocon.app'
+    spec.homepage                 = 'https://interfold.co.uk'
     spec.source                   = { :http=> ''}
     spec.authors                  = ''
     spec.license                  = ''
-    spec.summary                  = 'Octocon shared module'
+    spec.summary                  = 'Interfold shared module'
     spec.vendored_frameworks      = 'build/cocoapods/framework/shared.framework'
     spec.libraries                = 'c++'
     spec.ios.deployment_target    = '16.0'
-    spec.dependency 'SDWebImage'
-    spec.dependency 'SDWebImageWebPCoder'
-    spec.dependency 'TOCropViewController'
+    spec.dependency 'SDWebImage', '5.20.0'
+    spec.dependency 'SDWebImageWebPCoder', '0.14.6'
+    spec.dependency 'TOCropViewController', '2.7.4'
     if !Dir.exist?('build/cocoapods/framework/shared.framework') || Dir.empty?('build/cocoapods/framework/shared.framework')
         raise "
         Kotlin framework 'shared' doesn't exist yet, so a proper Xcode project can't be generated.
@@ -45,5 +45,5 @@ Pod::Spec.new do |spec|
             SCRIPT
         }
     ]
-    spec.resources = ['build/compose/cocoapods/compose-resources']
+    spec.resources = ['build\compose\cocoapods\compose-resources']
 end

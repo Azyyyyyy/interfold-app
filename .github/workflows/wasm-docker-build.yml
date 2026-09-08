@@ -120,7 +120,7 @@ jobs:
             shared/build/reports/tests/desktopTest/
             shared/build/test-results/desktopTest/
 
-  # End-to-end slice against the published Octocon backend image
+  # End-to-end slice against the published Interfold backend image
   # (digest-pinned in shared/src/desktopIntegrationTest/.../BackendContainer.kt).
   # Boots the image in Testcontainers, drives the OAuth-callback auth flow
   # to obtain a real token, then exercises ApiInterfaceImpl through the
@@ -189,6 +189,16 @@ jobs:
     timeout-minutes: 40
     permissions:
       contents: read
+    # xcodebuild invokes Gradle through CocoaPods' Build shared script, which
+    # does not pass -Pkotlin.incremental.native=false. The env var is the
+    # Gradle equivalent and covers that nested invocation plus the explicit
+    # compile/test steps below. Needed because Kotlin/Native incremental
+    # compilation asserts on iosSimulatorArm64 Debug:
+    #   Failed to build cache for [...]/multiplatform-markdown-renderer[...]
+    #   java.lang.AssertionError: Lowering ReturnsInsertion: phases [Enums]
+    #   are required, but not satisfied
+    env:
+      ORG_GRADLE_PROJECT_kotlin.incremental.native: "false"
 
     steps:
       - name: Checkout
@@ -373,7 +383,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/octocon-wasm
+          images: ghcr.io/${{ github.repository_owner }}/interfold-wasm
           tags: |
             type=ref,event=branch
             type=sha,prefix=sha-
@@ -400,5 +410,5 @@ jobs:
           # the bootstrapper's manifest inspection.
           provenance: false
           sbom: false
-          cache-from: type=gha,scope=octocon-wasm
-          cache-to: type=gha,mode=max,scope=octocon-wasm
+          cache-from: type=gha,scope=interfold-wasm
+          cache-to: type=gha,mode=max,scope=interfold-wasm

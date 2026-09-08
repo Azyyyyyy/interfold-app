@@ -14,7 +14,7 @@ kotlin {
 
   // The androidTarget is already created by com.android.kotlin.multiplatform.library plugin
   targets.named<com.android.build.api.dsl.KotlinMultiplatformAndroidLibraryTarget>("android") {
-    namespace = "app.octocon.color_picker"
+    namespace = "app.interfold.color_picker"
     compileSdk = (findProperty("android.compileSdk") as String).toInt()
   }
 

@@ -115,15 +115,15 @@ jobs:
 
       # Runs :androidApp:assembleRelease and :bundleRelease against the
       # signing config wired in androidApp/build.gradle.kts (which reads
-      # OCTOCON_KEYSTORE_* from env). Fails fast if secrets are missing —
+      # INTERFOLD_KEYSTORE_* from env). Fails fast if secrets are missing —
       # the signing block would silently fall back to unsigned output
       # otherwise, which is fine locally but a bug in CI.
       - name: Build APK + AAB
         env:
-          OCTOCON_KEYSTORE_FILE: ${{ runner.temp }}/release.keystore
-          OCTOCON_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
-          OCTOCON_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
-          OCTOCON_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+          INTERFOLD_KEYSTORE_FILE: ${{ runner.temp }}/release.keystore
+          INTERFOLD_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+          INTERFOLD_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          INTERFOLD_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           ./gradlew :androidApp:assembleRelease :androidApp:bundleRelease \
@@ -143,8 +143,8 @@ jobs:
           set -euo pipefail
           APK_SRC="androidApp/build/outputs/apk/release/androidApp-release.apk"
           AAB_SRC="androidApp/build/outputs/bundle/release/androidApp-release.aab"
-          APK_DST="$RUNNER_TEMP/Octocon-${RELEASE_TAG}.apk"
-          AAB_DST="$RUNNER_TEMP/Octocon-${RELEASE_TAG}.aab"
+          APK_DST="$RUNNER_TEMP/Interfold-${RELEASE_TAG}.apk"
+          AAB_DST="$RUNNER_TEMP/Interfold-${RELEASE_TAG}.aab"
           for pair in "$APK_SRC:$APK_DST" "$AAB_SRC:$AAB_DST"; do
             SRC="${pair%%:*}"; DST="${pair#*:}"
             if [ ! -s "$SRC" ]; then
@@ -312,30 +312,30 @@ jobs:
             -scheme iosApp \
             -configuration Release \
             -destination "generic/platform=iOS" \
-            -archivePath "$RUNNER_TEMP/Octocon.xcarchive" \
+            -archivePath "$RUNNER_TEMP/Interfold.xcarchive" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGN_ENTITLEMENTS="" \
             DEVELOPMENT_TEAM="" \
             ONLY_ACTIVE_ARCH=NO
-          if [ ! -d "$RUNNER_TEMP/Octocon.xcarchive/Products/Applications/Octocon.app" ]; then
-            echo "::error::xcodebuild archive did not produce Octocon.app"
+          if [ ! -d "$RUNNER_TEMP/Interfold.xcarchive/Products/Applications/Interfold.app" ]; then
+            echo "::error::xcodebuild archive did not produce Interfold.app"
             exit 1
           fi
 
       # xcodebuild -exportArchive insists on a signing identity even for
       # ad-hoc export, so we hand-pack the .ipa directly from the archive's
       # Applications folder. Standard Payload/*.app layout; the widget
-      # extension embedded inside Octocon.app comes along automatically.
+      # extension embedded inside Interfold.app comes along automatically.
       - name: Pack unsigned .ipa
         id: stage
         run: |
           set -euo pipefail
-          IPA_DST="$RUNNER_TEMP/Octocon-${RELEASE_TAG}-unsigned.ipa"
+          IPA_DST="$RUNNER_TEMP/Interfold-${RELEASE_TAG}-unsigned.ipa"
           rm -rf "$RUNNER_TEMP/Payload"
           mkdir -p "$RUNNER_TEMP/Payload"
-          cp -R "$RUNNER_TEMP/Octocon.xcarchive/Products/Applications/Octocon.app" \
+          cp -R "$RUNNER_TEMP/Interfold.xcarchive/Products/Applications/Interfold.app" \
             "$RUNNER_TEMP/Payload/"
           (cd "$RUNNER_TEMP" && zip -qr "$IPA_DST" Payload)
           if [ ! -s "$IPA_DST" ]; then

@@ -7,7 +7,7 @@
         </trust-anchors>
     </base-config>
     <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">api.octocon.app</domain>
+        <domain includeSubdomains="true">api.interfold.co.uk</domain>
         <trust-anchors>
             <certificates src="system" />
             <certificates src="user" />

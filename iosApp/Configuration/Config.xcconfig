@@ -1,6 +1,6 @@
 TEAM_ID=
-BUNDLE_ID=app.octocon.OctoconApp
-APP_NAME=Octocon
+BUNDLE_ID=app.interfold.InterfoldApp
+APP_NAME=Interfold
 
 // Centralised iOS version — see :shared:writeIosVersionXcconfig. The `?`
 // variant on the generated include is silent-if-missing so devs who never

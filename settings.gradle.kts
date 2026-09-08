@@ -1,4 +1,4 @@
-rootProject.name = "OctoconApp"
+rootProject.name = "InterfoldApp"
 
 include(":shared")
 include(":androidApp")

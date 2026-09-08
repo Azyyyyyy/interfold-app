@@ -1,5 +1,5 @@
 {
-  "name": "@octocon/website",
+  "name": "@interfold/website",
   "private": true,
   "type": "module",
   "scripts": {

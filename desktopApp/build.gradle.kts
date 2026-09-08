@@ -36,11 +36,11 @@ kotlin {
 
 compose.desktop {
   application {
-    mainClass = "app.octocon.app.MainKt"
+    mainClass = "app.interfold.app.MainKt"
 
     nativeDistributions {
       targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-      packageName = "Octocon"
+      packageName = "Interfold"
       // Strict MAJOR.MINOR.PATCH — root script synthesises a compliant
       // value even when the display version isn't semver (rolling builds).
       packageVersion = rootProject.extra["app.desktopPackageVersion"] as String

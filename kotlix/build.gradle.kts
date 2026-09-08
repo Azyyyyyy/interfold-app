@@ -14,7 +14,7 @@ kotlin {
 
   targets.named<com.android.build.api.dsl.KotlinMultiplatformAndroidLibraryTarget>("android") {
     compileSdk = (findProperty("android.compileSdk") as String).toInt()
-    namespace = "app.octocon.kotlix"
+    namespace = "app.interfold.kotlix"
   }
 
   @OptIn(ExperimentalKotlinGradlePluginApi::class)

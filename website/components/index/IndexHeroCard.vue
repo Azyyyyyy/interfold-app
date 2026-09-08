@@ -1,7 +1,7 @@
 <template>
-  <OctoCard>
+  <InterCard>
     <p class="lg:text-lg text-gray-300 text-center">
-      Octocon is the modern, all-in-one toolkit for people with DID and OSDD to
+      Interfold is the modern, all-in-one toolkit for people with DID and OSDD to
       manage their disorder and express themselves.
     </p>
     <div class="flex flex-col-reverse lg:flex-row justify-center gap-4">
@@ -16,6 +16,6 @@
         </div>
       </NuxtLink>
     </div>
-  </OctoCard>
+  </InterCard>
 </template>
 <script setup lang="ts"></script>

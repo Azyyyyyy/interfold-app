@@ -55,14 +55,14 @@ dependencies {
 // output so local `./gradlew :androidApp:assembleRelease` still works
 // without a keystore checked in anywhere.
 // ---------------------------------------------------------------------------
-val releaseKeystoreFile = (System.getenv("OCTOCON_KEYSTORE_FILE")
-  ?: findProperty("octocon.keystoreFile") as String?)?.let(::file)
-val releaseKeystorePassword = System.getenv("OCTOCON_KEYSTORE_PASSWORD")
-  ?: findProperty("octocon.keystorePassword") as String?
-val releaseKeyAlias = System.getenv("OCTOCON_KEY_ALIAS")
-  ?: findProperty("octocon.keyAlias") as String?
-val releaseKeyPassword = System.getenv("OCTOCON_KEY_PASSWORD")
-  ?: findProperty("octocon.keyPassword") as String?
+val releaseKeystoreFile = (System.getenv("INTERFOLD_KEYSTORE_FILE")
+  ?: findProperty("interfold.keystoreFile") as String?)?.let(::file)
+val releaseKeystorePassword = System.getenv("INTERFOLD_KEYSTORE_PASSWORD")
+  ?: findProperty("interfold.keystorePassword") as String?
+val releaseKeyAlias = System.getenv("INTERFOLD_KEY_ALIAS")
+  ?: findProperty("interfold.keyAlias") as String?
+val releaseKeyPassword = System.getenv("INTERFOLD_KEY_PASSWORD")
+  ?: findProperty("interfold.keyPassword") as String?
 
 val hasReleaseSigning = releaseKeystoreFile?.exists() == true &&
   !releaseKeystorePassword.isNullOrEmpty() &&
@@ -71,12 +71,12 @@ val hasReleaseSigning = releaseKeystoreFile?.exists() == true &&
 
 android {
   compileSdk = (findProperty("android.compileSdk") as String).toInt()
-  namespace = "app.octocon"
+  namespace = "app.interfold"
 
   sourceSets["main"].assets.srcDirs(layout.buildDirectory.dir("generated/shared-assets"))
 
   defaultConfig {
-    applicationId = "app.octocon.OctoconApp"
+    applicationId = "app.interfold.InterfoldApp"
     minSdk = (findProperty("android.minSdk") as String).toInt()
     targetSdk = (findProperty("android.targetSdk") as String).toInt()
     // Version + name are computed centrally in the root build.gradle.kts;
@@ -146,7 +146,7 @@ dependencies {
 }
 
 val copyComposeResources by tasks.creating {
-  val modules = listOf("shared" to "octoconapp.shared.resources", "krop" to "octoconapp.krop.resources")
+  val modules = listOf("shared" to "interfoldapp.shared.resources", "krop" to "interfoldapp.krop.resources")
   
   modules.forEach { (moduleName, targetFolder) ->
     val copyTask = tasks.create("copy${moduleName.capitalize()}Resources", Copy::class) {

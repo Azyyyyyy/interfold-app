@@ -23,7 +23,7 @@ kotlin {
   wasmJs {
     browser {
       commonWebpackConfig {
-        outputFileName = "octocon-app.js"
+        outputFileName = "interfold-app.js"
       }
     }
     useEsModules()

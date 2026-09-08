@@ -3,7 +3,7 @@
 // stamped value forces the activate handler at the bottom of this file to
 // delete the previous cache and repopulate it.
 const APP_VERSION = '__APP_VERSION__';
-const CACHE_NAME = `octocon-app-cache-${APP_VERSION}`;
+const CACHE_NAME = `interfold-app-cache-${APP_VERSION}`;
 const PRECACHE_URLS = [];
 //^^ This is populated at build time with the actual list of files to precache;
 // based on the output of the bundler. See build.gradle.kts for details.
@@ -18,7 +18,7 @@ const PRECACHE_URLS = [];
 // SW wake-up after a browser restart can re-init from disk before the network
 // is even needed.
 
-const FIREBASE_CONFIG_CACHE = 'octocon-firebase-config-v1';
+const FIREBASE_CONFIG_CACHE = 'interfold-firebase-config-v1';
 const FIREBASE_CONFIG_URL = '/api/settings/firebase-config?platform=web';
 
 try {
@@ -94,7 +94,7 @@ function ensureFirebaseInitialized() {
     messaging.onBackgroundMessage((payload) => {
       try {
         const notif = (payload && payload.notification) || {};
-        const title = notif.title || 'Octocon';
+        const title = notif.title || 'Interfold';
         const options = {
           body: notif.body || '',
           icon: '/icons/icon-192.png',

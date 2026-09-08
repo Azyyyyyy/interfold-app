@@ -52,7 +52,7 @@ class Throttler {
 
 class SwiftPlatformDelegate : PlatformDelegate {
   static let shared = SwiftPlatformDelegate()
-  private let groupDefaults = UserDefaults(suiteName: "group.app.octocon.Octocon")!
+  private let groupDefaults = UserDefaults(suiteName: "group.app.interfold.Interfold")!
   
   let widgetThrottler = Throttler(delay: 5.0) {
     WidgetCenter.shared.reloadAllTimelines()
@@ -87,7 +87,7 @@ class SwiftPlatformDelegate : PlatformDelegate {
     let payload = Payload(recoveryCode.data(using: .utf8)!)
     
     // Pass the endpoint down to the Kotlin helper to fetch the correct public key
-    let publicKeyString = Platform_iosKt.getOctoconPublicKey(endpoint: endpoint)
+    let publicKeyString = Platform_iosKt.getInterfoldPublicKey(endpoint: endpoint)
     let publicKey = publicKeyFromString(publicKeyString)
     
     let encrypter = Encrypter(keyManagementAlgorithm: .RSAOAEP256, contentEncryptionAlgorithm: .A256GCM, encryptionKey: publicKey)!

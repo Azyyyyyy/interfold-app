@@ -13,8 +13,8 @@
     >
       <div class="relative h-[128px] w-[128px]">
         <NuxtPicture
-          src="/img/octocon-logo.png"
-          alt="Octocon logo"
+          src="/img/interfold-logo.png"
+          alt="Interfold logo"
           format="avif,webp"
           width="128"
           height="128"
@@ -22,31 +22,20 @@
           quality="90"
         />
         <div
-          class="rounded-full octo-gradient absolute inset--100% md:inset--200% z--1 blur-lg"
+          class="rounded-full inter-gradient absolute inset--100% md:inset--200% z--1 blur-lg"
         />
       </div>
       <h1
         class="font-bold font-display text-4xl md:text-5xl lg:text-6xl 2xl:text-7xl pt-4 pb-8 text-gray-200"
       >
-        Octocon
+        Interfold
       </h1>
       <IndexHeroCard />
-    </div>
-    <div class="pb-24 flex flex-col items-center gap-8">
-      <h2
-        class="font-bold font-display text-xl md:text-2xl lg:text-3xl text-gray-300 text-center"
-      >
-        Or download the app
-      </h2>
-      <div class="flex flex-col sm:flex-row justify-center gap-4">
-        <ButtonPlayStore />
-        <ButtonAppStore />
-      </div>
     </div>
   </div>
 </template>
 <style scoped>
-.octo-gradient {
+.inter-gradient {
   background: radial-gradient(
     circle,
     theme('colors.sky.500 / 20%') 0%,

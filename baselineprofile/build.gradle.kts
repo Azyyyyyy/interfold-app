@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-  namespace = "app.octocon.baselineprofile"
+  namespace = "app.interfold.baselineprofile"
   targetProjectPath = ":androidApp"
 
   compileSdk = (findProperty("android.compileSdk") as String).toInt()

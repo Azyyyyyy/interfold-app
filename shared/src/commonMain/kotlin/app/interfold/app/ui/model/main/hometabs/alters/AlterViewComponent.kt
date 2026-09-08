@@ -1,0 +1,585 @@
+package app.interfold.app.ui.model.main.hometabs.alters
+
+import androidx.compose.runtime.Composable
+import app.interfold.app.api.APIState
+import app.interfold.app.api.model.APIResponse
+import app.interfold.app.api.model.MyAlter
+import app.interfold.app.api.model.SecurityLevel
+import app.interfold.app.api.model.UnmarkedAlterCustomField
+import app.interfold.app.ui.model.MainComponentContext
+import app.interfold.app.ui.model.interfaces.ApiInterfaceImpl
+import app.interfold.app.ui.model.interfaces.SettingsInterface
+import app.interfold.app.ui.model.main.SaveState
+import app.interfold.app.ui.model.main.hometabs.alters.alterview.AlterViewBasicInfoComponent
+import app.interfold.app.ui.model.main.hometabs.alters.alterview.AlterViewBasicInfoComponentImpl
+import app.interfold.app.ui.model.main.hometabs.alters.alterview.AlterViewFieldsComponent
+import app.interfold.app.ui.model.main.hometabs.alters.alterview.AlterViewFieldsComponentImpl
+import app.interfold.app.ui.model.main.hometabs.alters.alterview.AlterViewJournalComponent
+import app.interfold.app.ui.model.main.hometabs.alters.alterview.AlterViewJournalComponentImpl
+import app.interfold.app.utils.colorRegex
+import app.interfold.app.utils.compose
+import app.interfold.app.utils.globalSerializer
+import com.arkivanov.decompose.router.pages.ChildPages
+import com.arkivanov.decompose.router.pages.Pages
+import com.arkivanov.decompose.router.pages.PagesNavigation
+import com.arkivanov.decompose.router.pages.childPages
+import com.arkivanov.decompose.router.pages.select
+import com.arkivanov.decompose.value.Value
+import com.arkivanov.essenty.instancekeeper.InstanceKeeper
+import com.arkivanov.essenty.instancekeeper.retainedInstance
+import com.arkivanov.essenty.lifecycle.coroutines.coroutineScope
+import com.arkivanov.essenty.lifecycle.doOnDestroy
+import io.ktor.http.HttpMethod
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.put
+import interfoldapp.shared.resources.Res
+import interfoldapp.shared.resources.basic_info
+import interfoldapp.shared.resources.custom_fields
+import interfoldapp.shared.resources.fields
+import interfoldapp.shared.resources.journal
+import interfoldapp.shared.resources.tooltip_alter_journal_desc
+import interfoldapp.shared.resources.tooltip_alter_journal_title
+import interfoldapp.shared.resources.tooltip_basic_info_desc
+import interfoldapp.shared.resources.tooltip_custom_fields_desc
+
+interface AlterViewComponent {
+  val settings: SettingsInterface
+
+  val pages: Value<ChildPages<*, Child>>
+
+  val alterID: Int
+
+  val initialName: String?
+  val initialColor: String?
+  val model: Model
+  fun commit()
+
+  fun deleteAlter()
+
+  fun navigateToPage(index: Int)
+  fun navigateBack(trySave: Boolean = true)
+
+  fun updateShowSnackbar(showSnackbar: (String) -> Unit)
+
+  interface Model {
+    val apiAlter: StateFlow<APIState<MyAlter>?>
+
+    val id: Int
+    val saveState: StateFlow<SaveState>
+    val initialAlter: StateFlow<MyAlter?>
+    val name: StateFlow<String?>
+    val pronouns: StateFlow<String?>
+    val description: StateFlow<String?>
+    val color: StateFlow<String?>
+    val securityLevel: StateFlow<SecurityLevel>
+    val fields: StateFlow<List<UnmarkedAlterCustomField>>
+    val alias: StateFlow<String?>
+    val proxyName: StateFlow<String?>
+    val untracked: StateFlow<Boolean>
+    val archived: StateFlow<Boolean>
+    val pinned: StateFlow<Boolean>
+
+    val alterHasChanged: StateFlow<Boolean>
+    val isLoaded: StateFlow<Boolean>
+
+    fun updateSaveState(saveState: SaveState)
+    fun updateName(name: String): Result<String>
+    fun updatePronouns(pronouns: String): Result<String>
+    fun updateDescription(description: String): Result<String>
+    fun updateColor(color: String) : Result<String>
+    fun updateSecurityLevel(securityLevel: SecurityLevel)
+    fun updateFieldValue(fieldID: String, value: String?)
+    fun updateAlias(alias: String): Result<String>
+    fun updateProxyName(proxyName: String): Result<String>
+    fun updateUntracked(untracked: Boolean)
+    fun updateArchived(archived: Boolean)
+    fun updatePinned(pinned: Boolean)
+
+    fun revertChanges()
+  }
+
+  sealed interface Child {
+    interface Metadata {
+      val index: Int
+      val title: String
+        @Composable get
+      val spotlightTitle: String
+        @Composable get
+      val spotlightDescription: String
+        @Composable get
+    }
+
+    companion object {
+      val Child.metadata: Metadata
+        get() = when (this) {
+          is BasicInfoChild -> BasicInfoChild
+          is FieldsChild -> FieldsChild
+          is JournalChild -> JournalChild
+        }
+
+      val allMetadata: List<Metadata> by lazy {
+        listOf(
+          BasicInfoChild,
+          FieldsChild,
+          JournalChild
+        )
+      }
+    }
+
+    class BasicInfoChild(val component: AlterViewBasicInfoComponent) : Child {
+      companion object : Metadata {
+        override val index: Int = 0
+        override val title: String
+          @Composable get() = Res.string.basic_info.compose
+        override val spotlightTitle: String
+          @Composable get() = Res.string.basic_info.compose
+        override val spotlightDescription: String
+          @Composable get() = Res.string.tooltip_basic_info_desc.compose
+      }
+    }
+    class FieldsChild(val component: AlterViewFieldsComponent) : Child {
+      companion object : Metadata {
+        override val index: Int = 1
+        override val title: String
+          @Composable get() = Res.string.fields.compose
+        override val spotlightTitle: String
+          @Composable get() = Res.string.custom_fields.compose
+        override val spotlightDescription: String
+          @Composable get() = Res.string.tooltip_custom_fields_desc.compose
+      }
+    }
+    class JournalChild(val component: AlterViewJournalComponent) : Child {
+      companion object : Metadata {
+        override val index: Int = 2
+        override val title: String
+          @Composable get() = Res.string.journal.compose
+        override val spotlightTitle: String
+          @Composable get() = Res.string.tooltip_alter_journal_title.compose
+        override val spotlightDescription: String
+          @Composable get() = Res.string.tooltip_alter_journal_desc.compose
+      }
+    }
+  }
+}
+
+class AlterViewComponentImpl(
+  componentContext: MainComponentContext,
+  private val popSelf: () -> Unit,
+  private val navigateToTagViewFun: (String) -> Unit,
+  private val navigateToAlterJournalEntryViewFun: (String, String?) -> Unit,
+  private val navigateToCustomFieldsFun: () -> Unit,
+  override val alterID: Int
+) : AlterViewComponent, MainComponentContext by componentContext {
+  private val coroutineScope = coroutineScope(coroutineContext + SupervisorJob())
+
+  private val apiAlter = api.loadedAlters
+    .map { it[alterID] }
+    .stateIn(coroutineScope, SharingStarted.Eagerly, null)
+
+  private val _model = retainedInstance {
+    val unloadedInitialAlter = (api.alters.value as? APIState.Success)?.let { alters ->
+      alters.ensureData.find { it.id == alterID }
+    }
+    ModelImpl(
+      alterID,
+      unloadedInitialAlter,
+      apiAlter,
+      coroutineScope
+    )
+  }
+  override val model: AlterViewComponent.Model = _model
+
+  override var initialName: String? = ""
+  override var initialColor: String? = ""
+
+  private val navigator = PagesNavigation<Config>()
+
+  private val _pages =
+    childPages(
+      source = navigator,
+      serializer = Config.serializer(),
+      initialPages = { Pages(
+        listOf(
+          Config.BasicInfo,
+          Config.Fields,
+          Config.Journal
+        ),
+        selectedIndex = 0
+      ) },
+      handleBackButton = false,
+      childFactory = ::child,
+    )
+
+  override val pages: Value<ChildPages<*, AlterViewComponent.Child>> = _pages
+
+  private fun child(config: Config, componentContext: MainComponentContext): AlterViewComponent.Child {
+    return when (config) {
+      Config.BasicInfo ->
+        AlterViewComponent.Child.BasicInfoChild(
+          AlterViewBasicInfoComponentImpl(
+            componentContext = componentContext,
+            navigateToTagViewFun = ::navigateToTagView,
+            model = model
+          )
+        )
+
+      Config.Fields ->
+        AlterViewComponent.Child.FieldsChild(
+          AlterViewFieldsComponentImpl(
+            componentContext = componentContext,
+            model = model,
+            navigateToCustomFieldsFun = ::navigateToCustomFields
+          )
+        )
+
+      Config.Journal ->
+        AlterViewComponent.Child.JournalChild(
+          AlterViewJournalComponentImpl(
+            componentContext = componentContext,
+            navigateToJournalEntryViewFun = ::navigateToAlterJournalEntryView,
+            model = model
+          )
+        )
+    }
+  }
+
+  private var showSnackbar: ((String) -> Unit)? = null
+
+  override fun updateShowSnackbar(showSnackbar: (String) -> Unit) {
+    this.showSnackbar = showSnackbar
+  }
+
+  init {
+    with(api.alters.value) {
+      if(isSuccess) {
+        val data = this.ensureData
+        val alter = data.find { it.id == alterID }
+        initialName = alter?.name
+        initialColor = alter?.color
+      }
+    }
+
+    val alter = api.loadedAlters.value[alterID]
+    if(alter == null) {
+      coroutineScope.launch {
+        apiAlter.collect {
+          if(it != null && it.isSuccess) {
+            _model.injectInitialAlter(it.ensureData)
+          }
+        }
+      }
+      
+      api.loadAlter(alterID)
+    } else {
+      if(alter.isSuccess) _model.injectInitialAlter(alter.ensureData)
+    }
+
+    lifecycle.doOnDestroy {
+      if(model.alterHasChanged.value && model.saveState.value == SaveState.NotSaved) {
+        doPatchRequest()
+      }
+    }
+  }
+
+  override fun deleteAlter() {
+    api.deleteAlter(alterID)
+  }
+
+  override fun navigateToPage(index: Int) {
+    if(!model.isLoaded.value) return
+    navigator.select(index)
+  }
+
+  private var pendingSaveEvent: (() -> Unit)? = null
+
+  private fun tryExit(trySave: Boolean, onSave: () -> Unit) {
+    if (trySave && model.alterHasChanged.value) {
+      pendingSaveEvent = onSave
+      commit()
+    } else {
+      onSave()
+    }
+  }
+
+  private fun navigateToTagView(tagID: String) =
+    tryExit(true) { navigateToTagViewFun(tagID) }
+
+  private fun navigateToAlterJournalEntryView(entryID: String) =
+    tryExit(true) { navigateToAlterJournalEntryViewFun(entryID, model.color.value) }
+
+  private fun navigateToCustomFields() =
+    tryExit(true) { navigateToCustomFieldsFun() }
+
+  override fun navigateBack(trySave: Boolean) = tryExit(trySave, popSelf)
+
+  override fun commit() {
+    if (!model.alterHasChanged.value || model.saveState.value == SaveState.Saving) return
+    model.updateSaveState(SaveState.Saving)
+    doPatchRequest { isSuccess, response ->
+      if (isSuccess) {
+        pendingSaveEvent?.invoke()
+      } else {
+        showSnackbar?.invoke(response.error ?: "Failed to save alter.")
+      }
+      model.updateSaveState(
+        if (isSuccess) SaveState.Saved
+        else SaveState.Error
+      )
+    }
+  }
+
+  private fun doPatchRequest(callback: ((Boolean, APIResponse<JsonElement>) -> Unit)? = null) {
+    // TODO: Find a way to not have to cast this
+    (api as ApiInterfaceImpl).sendAPIRequest<JsonElement>(
+      HttpMethod.Patch,
+      "systems/me/alters/${alterID}",
+      _model.buildJsonDiff(),
+      callback
+    )
+  }
+
+  @Serializable
+  private sealed interface Config {
+    @Serializable
+    data object BasicInfo : Config
+
+    @Serializable
+    data object Fields : Config
+
+    @Serializable
+    data object Journal : Config
+  }
+
+  private class ModelImpl(
+    alterID: Int,
+    unloadedInitialAlter: MyAlter?,
+    override val apiAlter: StateFlow<APIState<MyAlter>?>,
+    coroutineScope: CoroutineScope
+  ) : AlterViewComponent.Model, InstanceKeeper.Instance {
+    override val id: Int = alterID
+
+    private val _saveState = MutableStateFlow(SaveState.NotSaved)
+    override val saveState = _saveState
+
+    private val _initialAlter = MutableStateFlow<MyAlter?>(null)
+    override val initialAlter = _initialAlter
+
+    private val _name = MutableStateFlow(unloadedInitialAlter?.name)
+    override val name: StateFlow<String?> = _name
+    private val _pronouns = MutableStateFlow(unloadedInitialAlter?.pronouns)
+    override val pronouns: StateFlow<String?> = _pronouns
+    private val _description = MutableStateFlow<String?>(null)
+    override val description: StateFlow<String?> = _description
+    private val _color = MutableStateFlow(unloadedInitialAlter?.color)
+    override val color: StateFlow<String?> = _color
+    private val _securityLevel = MutableStateFlow(SecurityLevel.PRIVATE)
+    override val securityLevel: StateFlow<SecurityLevel> = _securityLevel
+    private val _fields = MutableStateFlow(emptyList<UnmarkedAlterCustomField>())
+    override val fields: StateFlow<List<UnmarkedAlterCustomField>> = _fields
+
+    private val _alias = MutableStateFlow<String?>(null)
+    override val alias: StateFlow<String?> = _alias
+    private val _proxyName = MutableStateFlow<String?>(null)
+    override val proxyName: StateFlow<String?> = _proxyName
+
+    private val _untracked = MutableStateFlow(false)
+    override val untracked = _untracked
+    private val _archived = MutableStateFlow(false)
+    override val archived = _archived
+    private val _pinned = MutableStateFlow(false)
+    override val pinned = _pinned
+
+    private val _isLoaded = MutableStateFlow(false)
+    override val isLoaded = _isLoaded
+
+    fun injectInitialAlter(initialAlter: MyAlter) {
+      _initialAlter.value = initialAlter
+
+      _name.value = initialAlter.name
+      _pronouns.value = initialAlter.pronouns
+      _description.value = initialAlter.description
+      _color.value = initialAlter.color
+      _securityLevel.value = initialAlter.securityLevel
+      _fields.value = initialAlter.fields
+      _alias.value = initialAlter.alias
+      _proxyName.value = initialAlter.proxyName
+      _untracked.value = initialAlter.untracked
+      _archived.value = initialAlter.archived
+      _pinned.value = initialAlter.pinned
+
+      _isLoaded.value = true
+    }
+
+    override val alterHasChanged = combine(
+      isLoaded,
+      name,
+      pronouns,
+      description,
+      color,
+      securityLevel,
+      fields,
+      alias,
+      proxyName,
+      untracked,
+      archived,
+      pinned
+    ) { results ->
+      val isLoaded = results[0] as Boolean
+      if (!isLoaded) {
+        return@combine false
+      }
+
+      val name = results[1] as String?
+      val pronouns = results[2] as String?
+      val description = results[3] as String?
+      val color = results[4] as String?
+      val securityLevel = results[5] as SecurityLevel
+      @Suppress("UNCHECKED_CAST") val fields = results[6] as List<UnmarkedAlterCustomField>
+      val alias = results[7] as String?
+      val proxyName = results[8] as String?
+      val untracked = results[9] as Boolean
+      val archived = results[10] as Boolean
+      val pinned = results[11] as Boolean
+
+      return@combine (
+          name != initialAlter.value!!.name ||
+              pronouns != initialAlter.value!!.pronouns ||
+              description != initialAlter.value!!.description ||
+              color != initialAlter.value!!.color ||
+              securityLevel != initialAlter.value!!.securityLevel ||
+              fields != initialAlter.value!!.fields ||
+              alias != initialAlter.value!!.alias ||
+              proxyName != initialAlter.value!!.proxyName ||
+              untracked != initialAlter.value!!.untracked ||
+              archived != initialAlter.value!!.archived ||
+              pinned != initialAlter.value!!.pinned
+          )
+    }.stateIn(coroutineScope, SharingStarted.Eagerly, false)
+
+    override fun updateSaveState(saveState: SaveState) {
+      _saveState.value = saveState
+    }
+
+    override fun updateName(name: String): Result<String> {
+      if (name.length > 100) return Result.failure(IllegalArgumentException("Name too long"))
+      _name.value = name.ifBlank { null }
+      return Result.success(name)
+    }
+
+    override fun updatePronouns(pronouns: String): Result<String> {
+      if (pronouns.length > 100) return Result.failure(IllegalArgumentException("Pronouns too long"))
+      _pronouns.value = pronouns.ifBlank { null }
+      return Result.success(pronouns)
+    }
+
+    override fun updateDescription(description: String): Result<String> {
+      if (description.length > 3000) return Result.failure(IllegalArgumentException("Description too long"))
+      _description.value = description.ifBlank { null }
+      return Result.success(description)
+    }
+
+    override fun updateColor(color: String): Result<String> {
+      // Make sure it's a valid hex code (#000000 - #FFFFFF) with regex
+      if (!(colorRegex matches color)) return Result.failure(IllegalArgumentException("Invalid color"))
+      _color.value = color
+      return Result.success(color)
+    }
+
+    override fun updateSecurityLevel(securityLevel: SecurityLevel) {
+      _securityLevel.value = securityLevel
+    }
+
+    override fun updateFieldValue(fieldID: String, value: String?) {
+      if (value == null) {
+        _fields.value = _fields.value.filter { it.id != fieldID }
+      } else {
+        _fields.value =
+          _fields.value.find { it.id == fieldID }?.let {
+            val index = _fields.value.indexOf(it)
+            _fields.value.toMutableList().apply {
+              set(index, it.copy(value = value))
+            }
+          } ?: (_fields.value + UnmarkedAlterCustomField(
+            id = fieldID,
+            value = value
+          ))
+      }
+    }
+
+    override fun updateAlias(alias: String): Result<String> {
+      if (alias.length > 80) return Result.failure(IllegalArgumentException("Alias too long"))
+      _alias.value = alias.ifBlank { null }
+      return Result.success(alias)
+    }
+
+    override fun updateProxyName(proxyName: String): Result<String> {
+      if (proxyName.length > 100) return Result.failure(IllegalArgumentException("Proxy name too long"))
+      _proxyName.value = proxyName.ifBlank { null }
+      return Result.success(proxyName)
+    }
+
+    override fun updateUntracked(untracked: Boolean) {
+      _untracked.value = untracked
+    }
+
+    override fun updateArchived(archived: Boolean) {
+      _archived.value = archived
+    }
+
+    override fun updatePinned(pinned: Boolean) {
+      _pinned.value = pinned
+    }
+
+    override fun revertChanges() {
+      _name.value = initialAlter.value!!.name
+      _pronouns.value = initialAlter.value!!.pronouns
+      _description.value = initialAlter.value!!.description
+      _color.value = initialAlter.value!!.color
+      _securityLevel.value = initialAlter.value!!.securityLevel
+      _fields.value = initialAlter.value!!.fields
+      _alias.value = initialAlter.value!!.alias
+      _proxyName.value = initialAlter.value!!.proxyName
+      _untracked.value = initialAlter.value!!.untracked
+      _archived.value = initialAlter.value!!.archived
+      _pinned.value = initialAlter.value!!.pinned
+    }
+
+    fun buildJsonDiff(): String =
+      buildJsonObject {
+        if (_name.value != initialAlter.value!!.name)
+          put("name", _name.value)
+        if (_pronouns.value != initialAlter.value!!.pronouns)
+          put("pronouns", _pronouns.value)
+        if (_description.value != initialAlter.value!!.description)
+          put("description", _description.value)
+        if (_color.value != initialAlter.value!!.color)
+          put("color", _color.value)
+        if (_securityLevel.value != initialAlter.value!!.securityLevel)
+          put("security_level", globalSerializer.encodeToJsonElement(_securityLevel.value))
+        if (_fields.value != initialAlter.value!!.fields)
+          put("fields", globalSerializer.encodeToJsonElement(_fields.value))
+        if (_alias.value != initialAlter.value!!.alias)
+          put("alias", _alias.value)
+        if (_proxyName.value != initialAlter.value!!.proxyName)
+          put("proxy_name", _proxyName.value)
+        if (_untracked.value != initialAlter.value!!.untracked)
+          put("untracked", _untracked.value)
+        if (_archived.value != initialAlter.value!!.archived)
+          put("archived", _archived.value)
+        if (_pinned.value != initialAlter.value!!.pinned)
+          put("pinned", _pinned.value)
+      }.toString()
+  }
+}

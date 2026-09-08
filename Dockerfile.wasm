@@ -31,9 +31,9 @@ RUN sed -i 's/\r$//' ./gradlew && chmod +x ./gradlew
 #   /root/.local/share/kotlin/...       - Kotlin/Native toolchain
 #   /workspace/.gradle                  - Gradle configuration cache (avoids full reconfiguration
 #                                         on every build; enables incremental compilation on code changes)
-RUN --mount=type=cache,id=octocon-gradle-cache,target=/root/.gradle,sharing=locked \
-    --mount=type=cache,id=octocon-kotlin-native-cache,target=/root/.local/share/kotlin/kotlinNative,sharing=locked \
-    --mount=type=cache,id=octocon-workspace-gradle-cache,target=/workspace/.gradle,sharing=locked \
+RUN --mount=type=cache,id=interfold-gradle-cache,target=/root/.gradle,sharing=locked \
+    --mount=type=cache,id=interfold-kotlin-native-cache,target=/root/.local/share/kotlin/kotlinNative,sharing=locked \
+    --mount=type=cache,id=interfold-workspace-gradle-cache,target=/workspace/.gradle,sharing=locked \
     ./gradlew --no-daemon -Dorg.gradle.internal.http.connectionTimeout=120000 \
               -Dorg.gradle.internal.http.socketTimeout=120000 \
               -PappVersion.runNumber="$APPVERSION_RUN_NUMBER" \

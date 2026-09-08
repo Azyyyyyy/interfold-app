@@ -30,11 +30,6 @@ const navigation = [
   {
     name: 'Docs',
     href: '/docs',
-    class: 'pl-3 pr-3'
-  },
-  {
-    name: 'Discord',
-    href: 'https://octocon.app/discord',
     class: 'pl-3 pr-6'
   }
 ]

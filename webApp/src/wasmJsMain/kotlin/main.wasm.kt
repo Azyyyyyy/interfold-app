@@ -1,17 +1,18 @@
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
-import app.octocon.PlatformEventBus
-import app.octocon.app.Settings
-import app.octocon.app.ui.compose.screens.RootScreen
-import app.octocon.app.ui.model.RootComponentImpl
-import app.octocon.app.utils.FirebaseConfig
-import app.octocon.app.utils.FirebaseConfigProvider
-import app.octocon.app.utils.FirebasePlatform
-import app.octocon.app.utils.PlatformEvent
-import app.octocon.app.utils.SETTINGS_LOCALSTORAGE_KEY
-import app.octocon.app.utils.globalSerializer
-import app.octocon.app.utils.platformUtilities
-import app.octocon.app.utils.tryRefreshWebFCMToken
+import app.interfold.PlatformEventBus
+import app.interfold.app.Settings
+import app.interfold.app.ui.compose.screens.RootScreen
+import app.interfold.app.ui.model.RootComponentImpl
+import app.interfold.app.utils.FirebaseConfig
+import app.interfold.app.utils.FirebaseConfigProvider
+import app.interfold.app.utils.FirebasePlatform
+import app.interfold.app.utils.PlatformEvent
+import app.interfold.app.utils.SETTINGS_LOCALSTORAGE_KEY
+import app.interfold.app.utils.globalSerializer
+import app.interfold.app.utils.migrateLegacyWasmSettings
+import app.interfold.app.utils.platformUtilities
+import app.interfold.app.utils.tryRefreshWebFCMToken
 import com.arkivanov.decompose.DefaultComponentContext
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import com.arkivanov.essenty.lifecycle.resume
@@ -21,7 +22,7 @@ import kotlinx.browser.localStorage
 import kotlinx.browser.window
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
-import app.octocon.app.utils.PublicKeyProvider
+import app.interfold.app.utils.PublicKeyProvider
 import kotlinx.coroutines.Dispatchers
 import org.w3c.dom.Document
 import org.w3c.dom.url.URLSearchParams
@@ -29,6 +30,7 @@ import kotlin.time.Clock
 
 @OptIn(ExperimentalComposeUiApi::class, kotlinx.coroutines.DelicateCoroutinesApi::class)
 fun main() {
+  migrateLegacyWasmSettings()
   val lifecycle = LifecycleRegistry()
   // Shared with `platform.wasm.kt` so the reinit path fired from
   // `SettingsInterfaceImpl.setToken` on login completion can emit into the same

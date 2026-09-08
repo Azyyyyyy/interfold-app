@@ -13,7 +13,7 @@ kotlin {
   jvm("desktop")
   
   targets.named<com.android.build.api.dsl.KotlinMultiplatformAndroidLibraryTarget>("android") {
-    namespace = "app.octocon.krop"
+    namespace = "app.interfold.krop"
     compileSdk = (findProperty("android.compileSdk") as String).toInt()
   }
 
@@ -48,5 +48,5 @@ kotlin {
 
 compose.resources {
   publicResClass = true
-  packageOfResClass = "octoconapp.krop.resources"
+  packageOfResClass = "interfoldapp.krop.resources"
 }

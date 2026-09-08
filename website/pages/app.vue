@@ -3,8 +3,8 @@
     <div class="absolute z--1 w-screen h-screen grid place-items-center">
       <div class="flex flex-col gap-4 items-center text-center">
         <NuxtPicture
-          src="/img/octocon-logo.png"
-          alt="Octocon logo"
+          src="/img/interfold-logo.png"
+          alt="Interfold logo"
           format="avif,webp"
           width="96"
           height="96"
@@ -12,7 +12,7 @@
           quality="90"
         />
         <div class="text-3xl font-display text-gray-300">
-          Loading Octocon app...
+          Loading Interfold app...
         </div>
         <div class="font-body text-xl text-gray-400 font-medium">
           This may take a minute!
@@ -37,12 +37,14 @@
             🤦 Whoops!
           </h1>
           <p class="text-lg text-gray-400">
-            An error occurred while running the app. Please report this to the
-            Octocon developers
-            <NuxtLink to="https://octocon.app/discord" class="text-violet-400">
-              on Discord
+            An error occurred while running the app. Please report this by
+            <NuxtLink
+              to="https://github.com/Azyyyyyy/Interfold-app/issues"
+              class="text-violet-400"
+            >
+              opening a GitHub issue
             </NuxtLink>
-            !
+            .
           </p>
           <p class="text-lg text-gray-400">
             You can click the "X" above to ignore this error, but the app likely
@@ -63,7 +65,7 @@
             ⚠️ Warning! ⚠️
           </h1>
           <p class="text-lg text-gray-400">
-            Octocon's web app is currently in beta! The app is VERY likely to break. For a more stable
+            Interfold's web app is currently in beta! The app is VERY likely to break. For a more stable
             and fully featured experience, we recommend using our Android or iOS app.
           </p>
           <button
@@ -98,7 +100,7 @@ onMounted(() => {
 
   // Load app Wasm script outside the Vue context
   const script = document.createElement('script')
-  script.src = '/priv/app/octocon-app.js'
+  script.src = '/priv/app/interfold-app.js'
   script.async = true
   script.defer = true
   document.body.appendChild(script)
@@ -108,7 +110,7 @@ onMounted(() => {
   setInterval(() => {
     const fun = window.lastWasError ? console.warn : console.error
     fun(
-      `⚠️ DO NOT copy or paste anything here! If someone told you to access this screen, they are trying to scam you and/or gain access to your Octocon account. ${Math.random()}`
+      `⚠️ DO NOT copy or paste anything here! If someone told you to access this screen, they are trying to scam you and/or gain access to your Interfold account. ${Math.random()}`
     )
     window.lastWasError = !window.lastWasError
   }, 3000)

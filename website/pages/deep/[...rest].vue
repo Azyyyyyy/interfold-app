@@ -11,8 +11,8 @@
     <div class="container flex flex-col z-99 items-center px-4 py-12">
       <div class="relative h-[128px] w-[128px]">
         <NuxtPicture
-          src="/img/octocon-logo.png"
-          alt="Octocon logo"
+          src="/img/interfold-logo.png"
+          alt="Interfold logo"
           format="avif,webp"
           width="128"
           height="128"
@@ -20,7 +20,7 @@
           quality="90"
         />
         <div
-          class="rounded-full octo-gradient absolute inset--100% md:inset--200% z--1 blur-lg"
+          class="rounded-full inter-gradient absolute inset--100% md:inset--200% z--1 blur-lg"
         />
       </div>
       <h1
@@ -28,13 +28,13 @@
       >
         Whoops!
       </h1>
-      <OctoCard>
+      <InterCard>
         <p class="lg:text-lg text-gray-300 text-center">
-          It looks like you're trying to access a link that leads to the Octocon
+          It looks like you're trying to access a link that leads to the Interfold
           app. Your browser isn't detecting this properly, so you're seeing this
           page instead.
         </p>
-      </OctoCard>
+      </InterCard>
     </div>
     <div class="flex flex-col items-center gap-8 px-4 pb-12">
       <h2
@@ -42,7 +42,7 @@
       >
         Firefox users:
       </h2>
-      <OctoCard>
+      <InterCard>
         <p class="lg:text-lg text-gray-300 text-center">
           Click the three dots in the top right corner of your browser, then
           navigate to <b>Settings</b> -> <b>Advanced</b> ->
@@ -58,7 +58,7 @@
             quality="90"
           />
         </div>
-      </OctoCard>
+      </InterCard>
     </div>
     <div class="flex flex-col items-center gap-8 px-4 pb-12">
       <h2
@@ -66,9 +66,9 @@
       >
         Samsung Internet users:
       </h2>
-      <OctoCard>
+      <InterCard>
         <p class="lg:text-lg text-gray-300 text-center">
-          Click the small Octocon icon in the top right of your screen by the
+          Click the small Interfold icon in the top right of your screen by the
           address bar. If you do not see it, try using a different browser.
         </p>
         <div class="w-full grid place-items-center">
@@ -80,7 +80,7 @@
             quality="90"
           />
         </div>
-      </OctoCard>
+      </InterCard>
     </div>
     <div class="flex flex-col items-center gap-8 px-4 pb-12">
       <h2
@@ -88,13 +88,13 @@
       >
         Other browsers:
       </h2>
-      <OctoCard>
+      <InterCard>
         <p class="lg:text-lg text-gray-300 text-center">
           Please try using a different browser. We recommend Firefox, but most
           devices come preinstalled with Google Chrome, which will work by
           default.
         </p>
-      </OctoCard>
+      </InterCard>
     </div>
   </div>
 </template>
@@ -113,7 +113,7 @@ definePageMeta({
 // }
 </script>
 <style scoped>
-.octo-gradient {
+.inter-gradient {
   background: radial-gradient(
     circle,
     theme('colors.sky.500 / 20%') 0%,

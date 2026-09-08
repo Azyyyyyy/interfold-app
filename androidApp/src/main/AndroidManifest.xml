@@ -16,12 +16,12 @@
     <application
         android:allowBackup="false"
         android:enableOnBackInvokedCallback="true"
-        android:icon="@mipmap/octo_launcher"
-        android:label="Octocon"
+        android:icon="@mipmap/inter_launcher"
+        android:label="Interfold"
         android:networkSecurityConfig="@xml/network_security_config"
-        android:roundIcon="@mipmap/octo_launcher_round"
+        android:roundIcon="@mipmap/inter_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Octocon.Main"
+        android:theme="@style/Theme.Interfold.Main"
         tools:ignore="DataExtractionRules,UnusedAttribute">
         <receiver android:name=".glance.FrontWidgetReceiver"
             android:exported="true">
@@ -47,13 +47,13 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="octocon" />
+                <data android:scheme="interfold" />
             </intent-filter>
 
         </activity>
 
         <service
-            android:name=".OctoconFirebaseMessagingService"
+            android:name=".InterfoldFirebaseMessagingService"
             android:exported="false">
             <intent-filter>
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />

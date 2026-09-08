@@ -65,12 +65,6 @@ export default defineNuxtConfig({
     '/docs/app': {
       redirect: '/docs/app/download'
     },
-    '/docs/discord': {
-      redirect: '/docs/discord/setup'
-    },
-    '/docs/community': {
-      redirect: '/docs/community/getting-started'
-    },
     '/docs/contributing': {
       redirect: '/docs/contributing/getting-started'
     },
@@ -84,12 +78,12 @@ export default defineNuxtConfig({
         '/',
         '/sitemap.xml',
         '/robots.txt',
-        '/_ipx/f_webp&q_90&s_512x512/img/octocon-logo.png',
-        '/_ipx/f_avif&q_90&s_256x256/img/octocon-logo.png',
-        '/_ipx/f_webp&q_90&s_256x256/img/octocon-logo.png',
-        '/_ipx/f_png&q_90&s_256x256/img/octocon-logo.png',
-        '/_ipx/f_png&q_90&s_512x512/img/octocon-logo.png',
-        '/_ipx/f_avif&q_90&s_512x512/img/octocon-logo.png',
+        '/_ipx/f_webp&q_90&s_512x512/img/interfold-logo.png',
+        '/_ipx/f_avif&q_90&s_256x256/img/interfold-logo.png',
+        '/_ipx/f_webp&q_90&s_256x256/img/interfold-logo.png',
+        '/_ipx/f_png&q_90&s_256x256/img/interfold-logo.png',
+        '/_ipx/f_png&q_90&s_512x512/img/interfold-logo.png',
+        '/_ipx/f_avif&q_90&s_512x512/img/interfold-logo.png',
 
         '/_ipx/w_256&f_webp&q_90/img/enable-samsung-internet.png',
         '/_ipx/w_512&f_webp&q_90/img/enable-samsung-internet.png',
@@ -109,8 +103,8 @@ export default defineNuxtConfig({
   },
 
   site: {
-    url: 'https://octocon.app',
-    name: 'Octocon',
+    url: 'https://interfold.co.uk',
+    name: 'Interfold',
     description:
       'The modern, all-in-one toolkit for people with DID and OSDD to manage their disorder and express themselves.',
     defaultLocale: 'en'
