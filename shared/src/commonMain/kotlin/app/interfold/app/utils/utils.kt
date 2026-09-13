@@ -86,7 +86,12 @@ val noCacheKamelConfig = KamelConfig {
 
 fun platformLog(message: String) = platformLog(null, message)
 
-expect fun platformLog(tag: String? = null, message: String)
+fun platformLog(tag: String? = null, message: String) {
+  writePlatformLog(tag, message)
+  app.interfold.app.telemetry.Telemetry.recordPlatformLog(tag, message)
+}
+
+expect fun writePlatformLog(tag: String? = null, message: String)
 
 val globalSerializersModule = SerializersModule {
   polymorphic(app.interfold.app.api.model.Poll::class) {

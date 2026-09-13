@@ -12,7 +12,6 @@
 		2152FB042600AC8F00CF470E /* iOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2152FB032600AC8F00CF470E /* iOSApp.swift */; };
 		7555FF83242A565900829871 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7555FF82242A565900829871 /* ContentView.swift */; };
 		D465213B2D28C8DA00437389 /* Pods_iosApp.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D46521392D28C8D100437389 /* Pods_iosApp.framework */; };
-		D4CE387C2F59378400BD769C /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = D4CE387B2F59378400BD769C /* Sentry */; };
 		D4D6A08E2D1E91FD0047877A /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = D4D6A08D2D1E91FD0047877A /* FirebaseMessaging */; };
 		D4E36C452D1D757F00D2BFE3 /* SwiftPlatformDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E36C442D1D757D00D2BFE3 /* SwiftPlatformDelegate.swift */; };
 		D4E36C482D1D764300D2BFE3 /* JOSESwift in Frameworks */ = {isa = PBXBuildFile; productRef = D4E36C472D1D764300D2BFE3 /* JOSESwift */; };
@@ -110,7 +109,6 @@
 				D4D6A08E2D1E91FD0047877A /* FirebaseMessaging in Frameworks */,
 				D4E36C482D1D764300D2BFE3 /* JOSESwift in Frameworks */,
 				D465213B2D28C8DA00437389 /* Pods_iosApp.framework in Frameworks */,
-				D4CE387C2F59378400BD769C /* Sentry in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -224,7 +222,6 @@
 				F85CB1118929364A9C6EFABC /* Frameworks */,
 				D4D6A0AD2D1EA5EF0047877A /* Embed Foundation Extensions */,
 				5BCC8B57659A484C0813F3EC /* [CP] Embed Pods Frameworks */,
-				CDA95A9BD06D4DDAA632938E /* Upload Debug Symbols to Sentry */,
 				B430A1D26E30832AA912BA4D /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
@@ -288,7 +285,6 @@
 				D45CD8922D246D0900F324E7 /* XCRemoteSwiftPackageReference "keychain-swift" */,
 				D45CD8952D2587E700F324E7 /* XCRemoteSwiftPackageReference "Alamofire" */,
 				D45CD8982D2587F700F324E7 /* XCRemoteSwiftPackageReference "AlamofireImage" */,
-				AB430C8DB1EB4375868C52D4 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 			);
 			productRefGroup = 7555FF7C242A565900829871 /* Products */;
 			projectDirPath = "";
@@ -416,21 +412,6 @@
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-iosApp/Pods-iosApp-resources.sh\"\n";
 			showEnvVarsInLog = 0;
-		};
-		CDA95A9BD06D4DDAA632938E /* Upload Debug Symbols to Sentry */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 8;
-			files = (
-			);
-			inputPaths = (
-				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${TARGET_NAME}",
-			);
-			name = "Upload Debug Symbols to Sentry";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 1;
-			shellPath = /bin/sh;
-			shellScript = "# This script is responsable to upload debug symbols and source context for Sentry.\nif which sentry-cli >/dev/null; then\nexport SENTRY_ORG=interfold\nexport SENTRY_PROJECT=ios\nERROR=$(sentry-cli debug-files upload --include-sources \"$DWARF_DSYM_FOLDER_PATH\" 2>&1 >/dev/null)\nif [ ! $? -eq 0 ]; then\necho \"warning: sentry-cli - $ERROR\"\nfi\nelse\necho \"warning: sentry-cli not installed, download from https://github.com/getsentry/sentry-cli/releases\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -773,14 +754,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		AB430C8DB1EB4375868C52D4 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/getsentry/sentry-cocoa/";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 8.0.0;
-			};
-		};
 		D45CD8922D246D0900F324E7 /* XCRemoteSwiftPackageReference "keychain-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/evgenyneu/keychain-swift.git";
@@ -824,11 +797,6 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		D4CE387B2F59378400BD769C /* Sentry */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = AB430C8DB1EB4375868C52D4 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
-			productName = Sentry;
-		};
 		D4D6A08D2D1E91FD0047877A /* FirebaseMessaging */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = D4D6A08C2D1E91FD0047877A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;

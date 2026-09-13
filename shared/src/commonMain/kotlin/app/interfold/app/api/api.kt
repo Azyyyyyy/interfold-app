@@ -13,6 +13,8 @@ import app.interfold.app.api.model.MyFrontItem
 import app.interfold.app.api.model.MySystem
 import app.interfold.app.api.model.MyTag
 import app.interfold.app.api.model.Poll
+import app.interfold.app.telemetry.ActivityStatus
+import app.interfold.app.telemetry.Telemetry
 import app.interfold.app.utils.BuildConfig
 import app.interfold.app.utils.DevicePlatform
 import app.interfold.app.utils.globalSerializer
@@ -390,6 +392,13 @@ internal class KotlixPhoenixSocketSession(
     socketFlow.collect {
       when (it) {
         is SocketEvent.OpenEvent -> {
+          Telemetry.finishSpan(
+            name = if (it.wasReconnect) "phoenix.reconnect" else "phoenix.connect",
+            status = ActivityStatus.OK,
+            startedAtMillis = kotlin.time.Clock.System.now().toEpochMilliseconds(),
+            attributes = mapOf("phoenix.reconnect" to it.wasReconnect.toString()),
+            message = null,
+          )
           socketChannel?.let { channel -> socket.remove(channel) }
           socketChannel = socket.channel("system:${userID}", params = paramsClosure(it.wasReconnect))
 
@@ -404,6 +413,13 @@ internal class KotlixPhoenixSocketSession(
           }
         }
         is SocketEvent.FailureEvent -> {
+          Telemetry.finishSpan(
+            name = "phoenix.failure",
+            status = ActivityStatus.ERROR,
+            startedAtMillis = kotlin.time.Clock.System.now().toEpochMilliseconds(),
+            attributes = mapOf("exception.message" to (it.throwable.message ?: "Unknown error")),
+            message = it.throwable.message,
+          )
           errorPipeline.emit(it.throwable.message ?: "Unknown error")
         }
         is SocketEvent.MessageEvent -> {
@@ -412,6 +428,13 @@ internal class KotlixPhoenixSocketSession(
           }
         }
         is SocketEvent.CloseEvent -> {
+          Telemetry.finishSpan(
+            name = "phoenix.close",
+            status = ActivityStatus.ERROR,
+            startedAtMillis = kotlin.time.Clock.System.now().toEpochMilliseconds(),
+            attributes = mapOf("phoenix.close_code" to it.code.toString()),
+            message = "Channel closed with code ${it.code}",
+          )
           errorPipeline.emit("Channel closed with code ${it.code}")
         }
       }
