@@ -166,6 +166,25 @@ object Telemetry {
     }
   }
 
+  fun beginEndpointSpan(
+    method: String,
+    route: String,
+  ): EndpointSpanHandle {
+    val attributes = mapOf(
+      "http.method" to method,
+      "http.route" to route,
+    )
+    val startedAt = Clock.System.now().toEpochMilliseconds()
+    val (token, fields) = startLiveEndpointSpan("sendAPIRequest", attributes)
+    return EndpointSpanHandle(
+      name = "sendAPIRequest",
+      startedAtMillis = startedAt,
+      attributes = attributes,
+      propagationFields = fields,
+      token = token,
+    )
+  }
+
   fun finishSpan(
     name: String,
     status: ActivityStatus,
@@ -215,6 +234,48 @@ internal suspend fun fetchOtlpDiscovery(apiEndpoint: String): OtlpDiscoveryState
     OtlpDiscoveryState.Unavailable
   }
 }
+
+class EndpointSpanHandle internal constructor(
+  val name: String,
+  val startedAtMillis: Long,
+  val attributes: Map<String, String>,
+  val propagationFields: Map<String, String>,
+  private val token: Any?,
+) {
+  private var finished = false
+
+  fun finish(
+    status: ActivityStatus,
+    extraAttributes: Map<String, String> = emptyMap(),
+    message: String? = null,
+  ) {
+    if (finished) return
+    finished = true
+    val attrs = attributes + extraAttributes
+    val duration = Clock.System.now().toEpochMilliseconds() - startedAtMillis
+    ClientActivityStore.record(
+      name = name,
+      scope = ActivityScope.APP,
+      status = status,
+      durationMillis = duration,
+      attributes = attrs,
+      message = message,
+      startedAtMillis = startedAtMillis,
+    )
+    endLiveEndpointSpan(token, status, attrs)
+  }
+}
+
+internal expect fun startLiveEndpointSpan(
+  name: String,
+  attributes: Map<String, String>,
+): Pair<Any?, Map<String, String>>
+
+internal expect fun endLiveEndpointSpan(
+  token: Any?,
+  status: ActivityStatus,
+  attributes: Map<String, String>,
+)
 
 internal expect fun emitOtelSpan(
   tracerName: String,

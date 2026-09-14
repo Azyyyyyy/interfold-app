@@ -52,6 +52,18 @@ data class SocketAdapterResponse(
 fun buildEndpointPayload(method: HttpMethod, path: String): Map<String, Any?> =
   buildEndpointPayload(method, path, "")
 
+/**
+ * Phoenix `"endpoint"` adapter payload: `method`, `path`, `body`.
+ *
+ * Callers may merge W3C `traceparent` / `tracestate` from
+ * [app.interfold.app.telemetry.Telemetry.beginEndpointSpan] as extra top-level
+ * keys. The Interfold API `HandleEndpointProxyAsync` (server repo) should ignore
+ * unknown JSON properties or add those two optional strings. If `traceparent`
+ * is present, `TextMapPropagator.extract` into the current OTel context before
+ * the proxied REST dispatch so server spans are children of the client span.
+ * Do not persist these fields, and do not copy them onto downstream HTTP unless
+ * that hop is also traced.
+ */
 fun buildEndpointPayload(
   method: HttpMethod,
   path: String,

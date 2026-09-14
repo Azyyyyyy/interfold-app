@@ -1,6 +1,7 @@
 package app.interfold.app.utils
 
 import androidx.compose.runtime.Composable
+import app.interfold.app.telemetry.installImageFetcherTelemetry
 import io.kamel.core.config.Core
 import io.kamel.core.config.DefaultCacheSize
 import io.kamel.core.config.KamelConfig
@@ -62,6 +63,7 @@ val kamelConfig = KamelConfig {
         !httpResponse.status.isSuccess()
       }
     }
+    installImageFetcherTelemetry()
   }
 }
 
@@ -81,6 +83,7 @@ val noCacheKamelConfig = KamelConfig {
         !httpResponse.status.isSuccess()
       }
     }
+    installImageFetcherTelemetry()
   }
 }
 

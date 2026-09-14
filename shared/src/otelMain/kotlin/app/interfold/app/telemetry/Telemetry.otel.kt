@@ -15,6 +15,9 @@ import io.opentelemetry.kotlin.logging.export.compositeLogRecordExporter
 import io.opentelemetry.kotlin.logging.export.otlpHttpLogRecordExporter
 import io.opentelemetry.kotlin.logging.export.persistingLogRecordProcessor
 import io.opentelemetry.kotlin.logging.model.ReadWriteLogRecord
+import io.opentelemetry.kotlin.propagation.TextMapSetter
+import io.opentelemetry.kotlin.tracing.Span
+import io.opentelemetry.kotlin.tracing.SpanKind
 import io.opentelemetry.kotlin.tracing.StatusData
 import io.opentelemetry.kotlin.tracing.export.compositeSpanExporter
 import io.opentelemetry.kotlin.tracing.export.otlpHttpSpanExporter
@@ -116,4 +119,48 @@ internal actual fun emitOtelSpan(
     ActivityStatus.ERROR -> span.setStatus(StatusData.Error(attributes["exception.message"] ?: name))
   }
   span.end()
+}
+
+internal actual fun startLiveEndpointSpan(
+  name: String,
+  attributes: Map<String, String>,
+): Pair<Any?, Map<String, String>> {
+  val tracer = LiveOpenTelemetry.sdk.tracerProvider.getTracer(APP_TRACER)
+  if (!tracer.enabled()) return null to emptyMap()
+  val span = tracer.startSpan(name, spanKind = SpanKind.CLIENT) {
+    attributes.forEach { (key, value) ->
+      setStringAttribute(key, value)
+    }
+  }
+  val fields = mutableMapOf<String, String>()
+  val context = LiveOpenTelemetry.context.implicit().storeSpan(span)
+  LiveOpenTelemetry.propagator.inject(context, fields, W3cPayloadSetter)
+  return span to fields
+}
+
+internal actual fun endLiveEndpointSpan(
+  token: Any?,
+  status: ActivityStatus,
+  attributes: Map<String, String>,
+) {
+  val span = token as? Span ?: return
+  attributes.forEach { (key, value) ->
+    span.setStringAttribute(key, value)
+  }
+  when (status) {
+    ActivityStatus.OK -> span.setStatus(StatusData.Ok)
+    ActivityStatus.ERROR -> span.setStatus(
+      StatusData.Error(attributes["exception.message"] ?: attributes["http.status"] ?: "error")
+    )
+  }
+  span.end()
+}
+
+private object W3cPayloadSetter : TextMapSetter<MutableMap<String, String>> {
+  override fun set(carrier: MutableMap<String, String>?, key: String, value: String) {
+    if (carrier == null || value.isEmpty()) return
+    when (key.lowercase()) {
+      "traceparent", "tracestate" -> carrier[key] = value
+    }
+  }
 }

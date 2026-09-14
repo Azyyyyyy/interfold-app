@@ -1143,21 +1143,52 @@ internal class ApiInterfaceImpl(
       }
       try {
         withContext(ioDispatcher) {
-          socketSession!!.sendMessage(
-            "endpoint",
-            buildEndpointPayload(Get, endpoint)
-          ) {
-            val (_, response) = responseFromAdapterMessage<ResponseType>(it)
-            val resState = response.toState()
-            if (resState is APIState.Success) {
-              stateFlow.emit(
-                APIState.Success(
-                  postProcessorFunction?.invoke(resState.data) ?: resState.data
+          val span = Telemetry.beginEndpointSpan(Get.value, endpoint)
+          try {
+            socketSession!!.sendMessage(
+              "endpoint",
+              buildEndpointPayload(Get, endpoint) + span.propagationFields
+            ) {
+              try {
+                val (_, response) = responseFromAdapterMessage<ResponseType>(it)
+                val resState = response.toState()
+                if (resState is APIState.Success) {
+                  span.finish(
+                    status = ActivityStatus.OK,
+                    extraAttributes = mapOf("http.status" to "ok"),
+                    message = null,
+                  )
+                  stateFlow.emit(
+                    APIState.Success(
+                      postProcessorFunction?.invoke(resState.data) ?: resState.data
+                    )
+                  )
+                } else {
+                  span.finish(
+                    status = ActivityStatus.ERROR,
+                    extraAttributes = mapOf("http.status" to "error"),
+                    message = (resState as? APIState.Error)?.error,
+                  )
+                  stateFlow.emit(resState)
+                }
+              } catch (e: Exception) {
+                span.finish(
+                  status = ActivityStatus.ERROR,
+                  extraAttributes = mapOf("exception.message" to (e.message ?: "")),
+                  message = e.message,
                 )
-              )
-            } else {
-              stateFlow.emit(resState)
+                stateFlow.emit(
+                  APIState.Error("Network request failed. Are you connected to the internet?")
+                )
+              }
             }
+          } catch (e: Exception) {
+            span.finish(
+              status = ActivityStatus.ERROR,
+              extraAttributes = mapOf("exception.message" to (e.message ?: "")),
+              message = e.message,
+            )
+            throw e
           }
         }
       } catch (e: Exception) {
@@ -1818,24 +1849,18 @@ internal class ApiInterfaceImpl(
     noinline callback: ((Boolean, APIResponse<ResponseType>) -> Unit)? = null
   ) {
     launchIO {
-      val attrs = mapOf(
-        "http.method" to method.value,
-        "http.route" to path,
-      )
-      val startedAt = kotlin.time.Clock.System.now().toEpochMilliseconds()
+      val span = Telemetry.beginEndpointSpan(method.value, path)
       socketSession?.sendMessage(
         "endpoint",
-        buildEndpointPayload(method, path, body)
+        buildEndpointPayload(method, path, body) + span.propagationFields
       ) {
         try {
           val (isSuccess, response) = responseFromAdapterMessage<ResponseType>(it)
           callback?.invoke(isSuccess, response)
           val status = if (isSuccess) ActivityStatus.OK else ActivityStatus.ERROR
-          Telemetry.finishSpan(
-            name = "sendAPIRequest",
+          span.finish(
             status = status,
-            startedAtMillis = startedAt,
-            attributes = attrs + ("http.status" to if (isSuccess) "ok" else "error"),
+            extraAttributes = mapOf("http.status" to if (isSuccess) "ok" else "error"),
             message = response.error,
           )
           if (!isSuccess) {
@@ -1844,17 +1869,19 @@ internal class ApiInterfaceImpl(
         } catch (e: Exception) {
           platformLog("Failed to parse API response for $method $path: ${e.message ?: "Unknown error"}")
           platformLog("Raw API response: $it")
-          Telemetry.finishSpan(
-            name = "sendAPIRequest",
+          span.finish(
             status = ActivityStatus.ERROR,
-            startedAtMillis = startedAt,
-            attributes = attrs + ("exception.message" to (e.message ?: "")),
+            extraAttributes = mapOf("exception.message" to (e.message ?: "")),
             message = e.message,
           )
           callback?.invoke(false, APIResponse(error = "Failed to parse API response"))
           _errorFlow.emit("Error: Failed to parse API response (${e.message ?: "Unknown error"})")
         }
-      }
+      } ?: span.finish(
+        status = ActivityStatus.ERROR,
+        extraAttributes = mapOf("exception.message" to "no session"),
+        message = "no session",
+      )
     }
   }
 

@@ -370,13 +370,15 @@ internal class KotlixPhoenixSocketSession(
   }
 
   private val socketFlow: SocketFlow = MutableSharedFlow(8 * 1024)
+  private var connectAttemptAtMillis = kotlin.time.Clock.System.now().toEpochMilliseconds()
   private var socket: Socket = Socket(
     url = "$endpoint/socket/websocket",
     paramsClosure = paramsClosure,
     socketFlow = socketFlow,
     scope = coroutineScope,
     transport = { url, socketFlow, decode ->
-      KtorWebSocketTransport(url, socketFlow, decode, client)
+      connectAttemptAtMillis = kotlin.time.Clock.System.now().toEpochMilliseconds()
+      KtorWebSocketTransport(url, socketFlow, decode)
     }
   ).apply {
     logger = if (BuildConfig.isDebug()) {
@@ -395,7 +397,7 @@ internal class KotlixPhoenixSocketSession(
           Telemetry.finishSpan(
             name = if (it.wasReconnect) "phoenix.reconnect" else "phoenix.connect",
             status = ActivityStatus.OK,
-            startedAtMillis = kotlin.time.Clock.System.now().toEpochMilliseconds(),
+            startedAtMillis = connectAttemptAtMillis,
             attributes = mapOf("phoenix.reconnect" to it.wasReconnect.toString()),
             message = null,
           )
@@ -416,7 +418,7 @@ internal class KotlixPhoenixSocketSession(
           Telemetry.finishSpan(
             name = "phoenix.failure",
             status = ActivityStatus.ERROR,
-            startedAtMillis = kotlin.time.Clock.System.now().toEpochMilliseconds(),
+            startedAtMillis = connectAttemptAtMillis,
             attributes = mapOf("exception.message" to (it.throwable.message ?: "Unknown error")),
             message = it.throwable.message,
           )

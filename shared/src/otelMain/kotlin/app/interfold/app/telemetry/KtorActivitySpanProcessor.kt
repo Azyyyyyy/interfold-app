@@ -14,7 +14,8 @@ internal object KtorActivitySpanProcessor : SpanProcessor {
   override fun onEnding(span: ReadWriteSpan) = Unit
 
   override fun onEnd(span: ReadableSpan) {
-    if (span.instrumentationScopeInfo.name != KTOR_INSTRUMENTATION_SCOPE) return
+    val scope = span.instrumentationScopeInfo.name
+    if (scope != KTOR_INSTRUMENTATION_SCOPE && scope != IMAGE_INSTRUMENTATION_SCOPE) return
     val startMs = span.startTimestamp / 1_000_000
     val endMs = (span.endTimestamp ?: span.startTimestamp) / 1_000_000
     val attrs = span.attributes.mapValues { it.value.toString() }

@@ -10,4 +10,15 @@ internal actual fun emitOtelSpan(
   attributes: Map<String, String>,
 ) = Unit
 
+internal actual fun startLiveEndpointSpan(
+  name: String,
+  attributes: Map<String, String>,
+): Pair<Any?, Map<String, String>> = null to emptyMap()
+
+internal actual fun endLiveEndpointSpan(
+  token: Any?,
+  status: ActivityStatus,
+  attributes: Map<String, String>,
+) = Unit
+
 internal actual fun installUncaughtExceptionTelemetry() = Unit
