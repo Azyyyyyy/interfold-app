@@ -237,6 +237,8 @@ kotlin {
         implementation("io.opentelemetry.kotlin:core:$otelKotlinVersion")
         implementation("io.opentelemetry.kotlin:implementation:$otelKotlinVersion")
         implementation("io.opentelemetry.kotlin:exporters-otlp:$otelKotlinVersion")
+        implementation("io.opentelemetry.kotlin:exporters-persistence:$otelKotlinVersion")
+        implementation("io.opentelemetry.kotlin:instrumentation-ktor-client:$otelKotlinVersion")
       }
     }
     androidMain.dependsOn(otelMain)
