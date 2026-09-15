@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.em
 import app.interfold.app.ui.compose.components.interfoldLogoVectorPainter
 import app.interfold.app.ui.model.LoginComponent
 import app.interfold.app.ui.model.ServerHealthStatus
+import app.interfold.app.api.LoginMethodsStatus
 import app.interfold.app.utils.ColorSchemeParams
 import app.interfold.app.utils.compose
 import app.interfold.app.utils.composeColorSchemeParams
@@ -72,8 +73,11 @@ import interfoldapp.shared.resources.discord_logo
 import interfoldapp.shared.resources.google_logo
 import interfoldapp.shared.resources.login
 import interfoldapp.shared.resources.login_apple
+import interfoldapp.shared.resources.login_cloudflare
 import interfoldapp.shared.resources.login_discord
 import interfoldapp.shared.resources.login_google
+import interfoldapp.shared.resources.login_methods_loading
+import interfoldapp.shared.resources.login_methods_unavailable
 import interfoldapp.shared.resources.or_lowercase
 import interfoldapp.shared.resources.token
 import interfoldapp.shared.resources.welcome_body
@@ -88,6 +92,8 @@ fun LoginScreen(
   val directTokenDialogOpen = model.directTokenDialogOpen
   val serverUrl = model.serverUrl
   val serverHealthStatus = model.serverHealthStatus
+  val loginMethods = model.loginMethods
+  val loginMethodsStatus = model.loginMethodsStatus
 
   val settings by component.settings.collectAsState()
   val reduceMotion by derive { settings.reduceMotion }
@@ -110,21 +116,34 @@ fun LoginScreen(
           modifier = Modifier.widthIn(max = 450.dp),
           verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-          DiscordLoginButton(component::logInWithDiscord)
-          Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            HorizontalDivider()
-            Column(
-              modifier = Modifier.background(MaterialTheme.colorScheme.surface),
-            ) {
-              Text(Res.string.or_lowercase.compose, style = MaterialTheme.typography.labelMedium.copy(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-              ), modifier = Modifier.padding(horizontal = 16.dp))
+          when (loginMethodsStatus) {
+            LoginMethodsStatus.Idle, LoginMethodsStatus.Loading -> {
+              Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+              ) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                  Res.string.login_methods_loading.compose,
+                  style = MaterialTheme.typography.bodyMedium,
+                )
+              }
             }
-          }
-          Row(modifier = Modifier.height(IntrinsicSize.Min)) {
-            GoogleLoginButton(component::logInWithGoogle, modifier = Modifier.weight(1f).fillMaxHeight())
-            Spacer(modifier = Modifier.width(8.dp))
-            AppleLoginButton(component::logInWithApple, modifier = Modifier.weight(1f).fillMaxHeight())
+            LoginMethodsStatus.Failed -> {
+              if (!loginMethods.cloudflare && !loginMethods.google && !loginMethods.discord && !loginMethods.apple) {
+                Text(
+                  Res.string.login_methods_unavailable.compose,
+                  style = MaterialTheme.typography.bodyMedium,
+                  color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                  modifier = Modifier.padding(vertical = 8.dp),
+                )
+              } else {
+                LoginMethodsButtons(component, loginMethods)
+              }
+            }
+            LoginMethodsStatus.Ready -> LoginMethodsButtons(component, loginMethods)
           }
           Spacer(modifier = Modifier.windowInsetsBottomHeight(WindowInsets.systemBars))
         }
@@ -190,6 +209,66 @@ fun LoginScreen(
       }
     }
   )
+}
+
+@Composable
+private fun LoginMethodsButtons(
+  component: LoginComponent,
+  loginMethods: app.interfold.app.api.LoginMethods,
+) {
+  if (loginMethods.cloudflare) {
+    CloudflareLoginButton(component::logInWithCloudflare)
+    return
+  }
+
+  val showDiscord = loginMethods.discord
+  val showGoogle = loginMethods.google
+  val showApple = loginMethods.apple
+
+  if (showDiscord) {
+    DiscordLoginButton(component::logInWithDiscord)
+  }
+  if (showDiscord && (showGoogle || showApple)) {
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+      HorizontalDivider()
+      Column(
+        modifier = Modifier.background(MaterialTheme.colorScheme.surface),
+      ) {
+        Text(
+          Res.string.or_lowercase.compose,
+          style = MaterialTheme.typography.labelMedium.copy(
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+          ),
+          modifier = Modifier.padding(horizontal = 16.dp)
+        )
+      }
+    }
+  }
+  if (showGoogle || showApple) {
+    Row(modifier = Modifier.height(IntrinsicSize.Min)) {
+      if (showGoogle) {
+        GoogleLoginButton(component::logInWithGoogle, modifier = Modifier.weight(1f).fillMaxHeight())
+      }
+      if (showGoogle && showApple) {
+        Spacer(modifier = Modifier.width(8.dp))
+      }
+      if (showApple) {
+        AppleLoginButton(component::logInWithApple, modifier = Modifier.weight(1f).fillMaxHeight())
+      }
+    }
+  }
+}
+
+@Composable
+private fun CloudflareLoginButton(logIn: (ColorSchemeParams) -> Unit) {
+  val colorSchemeParams = composeColorSchemeParams
+  Button(
+    onClick = { logIn(colorSchemeParams) },
+    contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+    modifier = Modifier.fillMaxWidth()
+  ) {
+    Text(Res.string.login_cloudflare.compose)
+  }
 }
 
 @Composable
@@ -267,7 +346,10 @@ private fun ServerUrlDialog(
       }
     },
     confirmButton = {
-      Button(onClick = onDismiss) {
+      Button(onClick = {
+        onCheckHealth()
+        onDismiss()
+      }) {
         Text("Done")
       }
     }

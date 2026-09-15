@@ -42,6 +42,7 @@ class FakeSettingsInterface(
   override fun pushSettings(settings: Settings, updateWidgets: Boolean) = unsupported()
   override fun nukeEverything(fully: Boolean) = unsupported()
   override fun setToken(token: String?) = unsupported()
+  override fun setCloudflareAccessJwt(jwt: String?) = unsupported()
   override fun clearEncryptionKey() = unsupported()
   override fun setColorMode(colorMode: ColorMode) = unsupported()
   override fun setThemeColor(themeColor: ThemeColor) = unsupported()

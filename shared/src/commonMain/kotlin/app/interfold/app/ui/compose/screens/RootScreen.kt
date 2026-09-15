@@ -15,7 +15,9 @@ import app.interfold.app.ui.compose.LocalSpotlightTooltipsEnabled
 import app.interfold.app.ui.compose.screens.main.MainAppScreen
 import app.interfold.app.ui.compose.screens.onboarding.OnboardingScreen
 import app.interfold.app.ui.compose.theme.InterTheme
+import app.interfold.app.ui.model.CloudflareAccessSilentRefresh
 import app.interfold.app.ui.model.RootComponent
+import app.interfold.app.api.isAccessJwtNearExpiry
 import app.interfold.app.utils.DevicePlatform
 import app.interfold.app.utils.InitPushNotifications
 import app.interfold.app.utils.PlatformEvent
@@ -25,7 +27,8 @@ import app.interfold.app.utils.kamelConfig
 import com.arkivanov.decompose.ExperimentalDecomposeApi
 import com.arkivanov.decompose.extensions.compose.experimental.stack.ChildStack
 import io.kamel.image.config.LocalKamelConfig
-
+import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.minutes
 // If only value classes could be `const`...
 val GLOBAL_PADDING = 16.dp
 
@@ -224,6 +227,21 @@ fun RootScreen(
           else -> Unit
         }
       }
+    }
+  }
+
+  // Foreground silent Access JWT rotation while the user is in-session.
+  LaunchedEffect(settings.token, settings.cloudflareAccessJwt) {
+    if (settings.token == null) return@LaunchedEffect
+    while (true) {
+      if (isAccessJwtNearExpiry(settings.cloudflareAccessJwt)) {
+        CloudflareAccessSilentRefresh.refreshIfNeeded(
+          settings = component.settings,
+          platformUtilities = component.platformUtilities,
+          force = false,
+        )
+      }
+      delay(1.minutes)
     }
   }
 

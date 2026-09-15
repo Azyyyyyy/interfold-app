@@ -524,7 +524,11 @@ data class Settings(
   val installServiceWorker: Boolean = false,
 
   @SerialName("api_endpoint")
-  val apiEndpoint: String = DEFAULT_API_ENDPOINT
+  val apiEndpoint: String = DEFAULT_API_ENDPOINT,
+
+  /** Cloudflare Access application JWT (`CF_Authorization` / `Cf-Access-Jwt-Assertion`). Never used as Bearer. */
+  @SerialName("cloudflare_access_jwt")
+  val cloudflareAccessJwt: String? = null,
 ) {
   fun serialize() = globalSerializer.encodeToString(this)
 

@@ -207,6 +207,26 @@ val platformUtilities = object : PlatformUtilities {
     }
   }
 
+  override fun openCloudflareAccessSession(
+    url: String,
+    apiBaseUrl: String,
+    silent: Boolean,
+    onAccessJwt: (String) -> Unit,
+    onFinished: () -> Unit,
+    onFailed: (String) -> Unit,
+  ) {
+    // Desktop has no shared cookie jar with the system browser; open interactively
+    // for login (Interfold JWT still returns via deep link). Silent rotation cannot
+    // capture CF_Authorization here.
+    if (silent) {
+      onFailed("Silent Cloudflare Access rotation is not available on desktop")
+      onFinished()
+      return
+    }
+    openURL(url, ColorSchemeParams(null, null, null, null), WebURLOpenBehavior.NewTab)
+    onFinished()
+  }
+
   // Stubs: not implemented on desktop
   override fun performAdditionalPushNotificationSetup() = Unit
   override fun updateWidgets(sessionInvalidated: Boolean) = Unit

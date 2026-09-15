@@ -502,6 +502,9 @@ val httpBuilder: (token: String?, body: Any?) -> (HttpRequestBuilder.() -> Unit)
       if (token != null) {
         header("Authorization", "Bearer $token")
       }
+      CloudflareAccessCredentials.accessJwt?.let { accessJwt ->
+        header(CloudflareAccessCredentials.JWT_ASSERTION_HEADER, accessJwt)
+      }
       if (body != null && body !is MultiPartFormDataContent) {
         header("Content-Type", "application/json")
       }
