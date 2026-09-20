@@ -22,6 +22,7 @@ import io.opentelemetry.kotlin.tracing.SpanCreationAction
 import io.opentelemetry.kotlin.tracing.SpanKind
 import io.opentelemetry.kotlin.tracing.Tracer
 import io.opentelemetry.kotlin.tracing.TracerProvider
+import kotlin.concurrent.Volatile
 
 internal const val KTOR_INSTRUMENTATION_SCOPE =
   "io.opentelemetry.kotlin.instrumentation.ktor.client"
