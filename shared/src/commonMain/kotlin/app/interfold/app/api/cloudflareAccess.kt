@@ -10,6 +10,7 @@ import kotlinx.serialization.json.longOrNull
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.Clock
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.ExperimentalTime
 
@@ -21,15 +22,26 @@ object CloudflareAccessCredentials {
   const val JWT_ASSERTION_HEADER = "Cf-Access-Jwt-Assertion"
   const val COOKIE_NAME = "CF_Authorization"
 
-  /** Skew window before Access JWT `exp` when foreground silent rotation should run. */
-  val nearExpirySkew = 5.minutes
+  const val DEFAULT_NEAR_EXPIRY_SKEW_MINUTES = 5
+
+  /**
+   * Skew window before Access JWT `exp` when foreground silent rotation should run.
+   * Overridden from [app.interfold.app.Settings.cloudflareAccessNearExpirySkewMinutes].
+   */
+  @Volatile
+  var nearExpirySkew: Duration = DEFAULT_NEAR_EXPIRY_SKEW_MINUTES.minutes
+    private set
 
   @Volatile
   var accessJwt: String? = null
     private set
 
-  fun update(jwt: String?) {
+  fun update(
+    jwt: String?,
+    nearExpirySkewMinutes: Int = DEFAULT_NEAR_EXPIRY_SKEW_MINUTES,
+  ) {
     accessJwt = jwt?.takeIf { it.isNotBlank() }
+    nearExpirySkew = nearExpirySkewMinutes.coerceAtLeast(1).minutes
   }
 }
 
@@ -39,6 +51,21 @@ fun HttpClientConfig<*>.installCloudflareAccessHeaders() {
       header(CloudflareAccessCredentials.JWT_ASSERTION_HEADER, jwt)
     }
   }
+}
+
+/**
+ * Extracts the Cloudflare Access application JWT from a `Cookie` header or
+ * `CookieManager.getCookie` blob (`name=value; name2=value2`).
+ */
+fun extractCfAuthorizationCookie(cookieBlob: String?): String? {
+  if (cookieBlob.isNullOrBlank()) return null
+  return cookieBlob
+    .split(';')
+    .asSequence()
+    .map { it.trim() }
+    .firstOrNull { it.startsWith("${CloudflareAccessCredentials.COOKIE_NAME}=", ignoreCase = true) }
+    ?.substringAfter('=', missingDelimiterValue = "")
+    ?.takeIf { it.isNotBlank() }
 }
 
 @OptIn(ExperimentalEncodingApi::class)
@@ -61,10 +88,26 @@ fun parseAccessJwtExpiryEpochSeconds(jwt: String): Long? {
 fun isAccessJwtNearExpiry(
   jwt: String?,
   nowEpochSeconds: Long = Clock.System.now().epochSeconds,
+  skew: Duration = CloudflareAccessCredentials.nearExpirySkew,
 ): Boolean {
   if (jwt.isNullOrBlank()) return false
   val exp = parseAccessJwtExpiryEpochSeconds(jwt) ?: return false
-  return exp <= nowEpochSeconds + CloudflareAccessCredentials.nearExpirySkew.inWholeSeconds
+  return exp <= nowEpochSeconds + skew.inWholeSeconds
+}
+
+/**
+ * Seconds until Access JWT enters the near-expiry window, or `0` if already near/expired.
+ * `null` when there is no usable JWT/`exp`.
+ */
+@OptIn(ExperimentalTime::class)
+fun secondsUntilAccessJwtNearExpiry(
+  jwt: String?,
+  nowEpochSeconds: Long = Clock.System.now().epochSeconds,
+  skew: Duration = CloudflareAccessCredentials.nearExpirySkew,
+): Long? {
+  if (jwt.isNullOrBlank()) return null
+  val exp = parseAccessJwtExpiryEpochSeconds(jwt) ?: return null
+  return (exp - skew.inWholeSeconds - nowEpochSeconds).coerceAtLeast(0)
 }
 
 /**

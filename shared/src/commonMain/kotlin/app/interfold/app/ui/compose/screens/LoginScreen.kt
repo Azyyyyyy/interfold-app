@@ -67,6 +67,7 @@ import interfoldapp.shared.resources.Res
 import interfoldapp.shared.resources.app_logo
 import interfoldapp.shared.resources.apple_logo
 import interfoldapp.shared.resources.cancel
+import interfoldapp.shared.resources.cloudflare_logo
 import interfoldapp.shared.resources.direct_token_login_body
 import interfoldapp.shared.resources.direct_token_login_title
 import interfoldapp.shared.resources.discord_logo
@@ -267,6 +268,13 @@ private fun CloudflareLoginButton(logIn: (ColorSchemeParams) -> Unit) {
     contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
     modifier = Modifier.fillMaxWidth()
   ) {
+    Icon(
+      painterResource(Res.drawable.cloudflare_logo),
+      contentDescription = null,
+      modifier = Modifier.size(ButtonDefaults.IconSize),
+      tint = Color.Unspecified,
+    )
+    Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
     Text(Res.string.login_cloudflare.compose)
   }
 }

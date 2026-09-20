@@ -93,7 +93,10 @@ class SettingsInterfaceImpl(
   override val data: StateFlow<Settings> = _settings
 
   init {
-    CloudflareAccessCredentials.update(initialSettings.cloudflareAccessJwt)
+    CloudflareAccessCredentials.update(
+      jwt = initialSettings.cloudflareAccessJwt,
+      nearExpirySkewMinutes = initialSettings.cloudflareAccessNearExpirySkewMinutes,
+    )
   }
 
   @Composable
@@ -101,7 +104,10 @@ class SettingsInterfaceImpl(
 
   override fun pushSettings(settings: Settings, updateWidgets: Boolean) {
     _settings.tryEmit(settings)
-    CloudflareAccessCredentials.update(settings.cloudflareAccessJwt)
+    CloudflareAccessCredentials.update(
+      jwt = settings.cloudflareAccessJwt,
+      nearExpirySkewMinutes = settings.cloudflareAccessNearExpirySkewMinutes,
+    )
     if(updateWidgets) { platformUtilities.updateWidgets() }
   }
 
@@ -343,7 +349,10 @@ class SettingsInterfaceImpl(
     val new = block(old)
     _settings.tryEmit(new)
     settingsSaver(new)
-    CloudflareAccessCredentials.update(new.cloudflareAccessJwt)
+    CloudflareAccessCredentials.update(
+      jwt = new.cloudflareAccessJwt,
+      nearExpirySkewMinutes = new.cloudflareAccessNearExpirySkewMinutes,
+    )
 
     if(updateWidgets) {
       platformUtilities.updateWidgets()

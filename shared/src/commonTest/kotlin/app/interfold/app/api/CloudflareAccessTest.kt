@@ -45,6 +45,29 @@ class CloudflareAccessTest {
   }
 
   @Test
+  fun secondsUntilAccessJwtNearExpiry_schedulesAheadOfExp() {
+    CloudflareAccessCredentials.update(jwt = null, nearExpirySkewMinutes = 5)
+    val exp = 1_700_000_000L
+    val payload = "eyJleHAiOjE3MDAwMDAwMDB9"
+    val jwt = "hdr.$payload.sig"
+    // 10 minutes before exp → 5 minutes until near-expiry window
+    assertEquals(
+      300L,
+      secondsUntilAccessJwtNearExpiry(jwt, nowEpochSeconds = exp - 600),
+    )
+    assertEquals(
+      0L,
+      secondsUntilAccessJwtNearExpiry(jwt, nowEpochSeconds = exp - 60),
+    )
+  }
+
+  @Test
+  fun nearExpirySkew_isConfigurable() {
+    CloudflareAccessCredentials.update(jwt = null, nearExpirySkewMinutes = 15)
+    assertEquals(15, CloudflareAccessCredentials.nearExpirySkew.inWholeMinutes.toInt())
+  }
+
+  @Test
   fun looksLikeCloudflareAccessChallenge_detectsLocationAndHtml() {
     assertTrue(
       looksLikeCloudflareAccessChallenge(

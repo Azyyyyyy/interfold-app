@@ -529,6 +529,13 @@ data class Settings(
   /** Cloudflare Access application JWT (`CF_Authorization` / `Cf-Access-Jwt-Assertion`). Never used as Bearer. */
   @SerialName("cloudflare_access_jwt")
   val cloudflareAccessJwt: String? = null,
+
+  /**
+   * Minutes before Access JWT `exp` when foreground silent rotation should run.
+   * Default matches [app.interfold.app.api.CloudflareAccessCredentials.DEFAULT_NEAR_EXPIRY_SKEW_MINUTES].
+   */
+  @SerialName("cloudflare_access_near_expiry_skew_minutes")
+  val cloudflareAccessNearExpirySkewMinutes: Int = 5,
 ) {
   fun serialize() = globalSerializer.encodeToString(this)
 
