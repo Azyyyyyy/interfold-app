@@ -33,6 +33,7 @@ object Telemetry {
 
   suspend fun syncFromSettings(settings: Settings) {
     mutex.withLock {
+      ClientActivityStore.setCapacity(settings.activityEventCapacity)
       val customUrl = settings.otlpEndpoint.trim().ifEmpty { null }
       val discoveredUrl = if (settings.shareActivityWithServer) {
         refreshDiscoveryLocked(settings.apiEndpoint)

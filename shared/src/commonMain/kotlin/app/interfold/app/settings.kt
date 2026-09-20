@@ -530,13 +530,16 @@ data class Settings(
   val shareActivityWithServer: Boolean = false,
 
   @SerialName("otlp_endpoint")
-  val otlpEndpoint: String = ""
+  val otlpEndpoint: String = "",
+
+  @SerialName("activity_event_capacity")
+  val activityEventCapacity: Int = DEFAULT_ACTIVITY_EVENT_CAPACITY,
 ) {
   fun serialize() = globalSerializer.encodeToString(this)
 
   companion object {
     const val DEFAULT_API_ENDPOINT = "https://api.interfold.co.uk"
-    const val ACTIVITY_EVENT_CAPACITY = 500
+    const val DEFAULT_ACTIVITY_EVENT_CAPACITY = 500
     fun deserialize(json: String) = globalSerializer.decodeFromString<Settings>(json)
   }
 }

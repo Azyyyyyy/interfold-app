@@ -81,6 +81,7 @@ class FakeSettingsInterface(
   override fun setApiEndpoint(apiEndpoint: String) = unsupported()
   override fun setShareActivityWithServer(shareActivityWithServer: Boolean) = unsupported()
   override fun setOtlpEndpoint(otlpEndpoint: String) = unsupported()
+  override fun setActivityEventCapacity(activityEventCapacity: Int) = unsupported()
 
   override fun isAppInstalled(): Boolean = unsupported()
   override suspend fun getEncryptionKey(): String = unsupported()

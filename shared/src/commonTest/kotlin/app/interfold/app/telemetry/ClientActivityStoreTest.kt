@@ -1,5 +1,6 @@
 package app.interfold.app.telemetry
 
+import app.interfold.app.Settings
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -10,11 +11,13 @@ class ClientActivityStoreTest {
   @BeforeTest
   fun setUp() {
     ClientActivityStore.clear()
+    ClientActivityStore.setCapacity(Settings.DEFAULT_ACTIVITY_EVENT_CAPACITY)
   }
 
   @AfterTest
   fun tearDown() {
     ClientActivityStore.clear()
+    ClientActivityStore.setCapacity(Settings.DEFAULT_ACTIVITY_EVENT_CAPACITY)
   }
 
   @Test
@@ -41,7 +44,8 @@ class ClientActivityStoreTest {
 
   @Test
   fun dropsOldestWhenOverCapacity() {
-    repeat(ClientActivityStore.CAPACITY + 3) { index ->
+    val limit = ClientActivityStore.capacity
+    repeat(limit + 3) { index ->
       ClientActivityStore.record(
         name = "event-$index",
         scope = ActivityScope.APP,
@@ -51,9 +55,24 @@ class ClientActivityStoreTest {
     }
 
     val snapshot = ClientActivityStore.snapshot()
-    assertEquals(ClientActivityStore.CAPACITY, snapshot.size)
+    assertEquals(limit, snapshot.size)
     assertEquals("event-3", snapshot.first().name)
-    assertEquals("event-${ClientActivityStore.CAPACITY + 2}", snapshot.last().name)
+    assertEquals("event-${limit + 2}", snapshot.last().name)
+  }
+
+  @Test
+  fun respectsConfiguredCapacity() {
+    ClientActivityStore.setCapacity(2)
+    repeat(4) { index ->
+      ClientActivityStore.record(
+        name = "event-$index",
+        scope = ActivityScope.APP,
+        status = ActivityStatus.OK,
+        durationMillis = 0,
+      )
+    }
+
+    assertEquals(listOf("event-2", "event-3"), ClientActivityStore.snapshot().map { it.name })
   }
 
   @Test

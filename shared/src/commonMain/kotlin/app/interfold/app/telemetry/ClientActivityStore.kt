@@ -29,11 +29,20 @@ data class ActivityEvent(
 )
 
 object ClientActivityStore {
-  const val CAPACITY = Settings.ACTIVITY_EVENT_CAPACITY
+  var capacity: Int = Settings.DEFAULT_ACTIVITY_EVENT_CAPACITY
+    private set
 
   private var nextId = 1L
   private val _events = MutableStateFlow<List<ActivityEvent>>(emptyList())
   val events: StateFlow<List<ActivityEvent>> = _events.asStateFlow()
+
+  fun setCapacity(value: Int) {
+    val nextCapacity = value.coerceAtLeast(1)
+    capacity = nextCapacity
+    _events.update { current ->
+      if (current.size > nextCapacity) current.drop(current.size - nextCapacity) else current
+    }
+  }
 
   fun record(
     name: String,
@@ -57,7 +66,8 @@ object ClientActivityStore {
         message = message,
       )
       val next = current + recorded
-      if (next.size > CAPACITY) next.drop(next.size - CAPACITY) else next
+      val limit = capacity
+      if (next.size > limit) next.drop(next.size - limit) else next
     }
     return recorded
   }
