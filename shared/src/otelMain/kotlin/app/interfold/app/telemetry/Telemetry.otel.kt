@@ -106,15 +106,18 @@ internal actual fun emitOtelSpan(
   val sdk = LiveOpenTelemetry.sdk
   val tracer = sdk.tracerProvider.getTracer(tracerName)
   if (!tracer.enabled()) return
+  val safeAttributes = sanitizeTelemetryAttributes(attributes)
   val span = tracer.startSpan(name) {
-    attributes.forEach { (key, value) ->
+    safeAttributes.forEach { (key, value) ->
       setStringAttribute(key, value)
     }
     setLongAttribute("duration_ms", durationMillis)
   }
   when (status) {
     ActivityStatus.OK -> span.setStatus(StatusData.Ok)
-    ActivityStatus.ERROR -> span.setStatus(StatusData.Error(attributes["exception.message"] ?: name))
+    ActivityStatus.ERROR -> span.setStatus(
+      StatusData.Error(safeAttributes["exception.message"] ?: name),
+    )
   }
   span.end()
 }
@@ -125,8 +128,9 @@ internal actual fun startLiveEndpointSpan(
 ): Pair<Any?, Map<String, String>> {
   val tracer = LiveOpenTelemetry.sdk.tracerProvider.getTracer(APP_TRACER)
   if (!tracer.enabled()) return null to emptyMap()
+  val safeAttributes = sanitizeTelemetryAttributes(attributes)
   val span = tracer.startSpan(name, spanKind = SpanKind.CLIENT) {
-    attributes.forEach { (key, value) ->
+    safeAttributes.forEach { (key, value) ->
       setStringAttribute(key, value)
     }
   }
@@ -142,13 +146,18 @@ internal actual fun endLiveEndpointSpan(
   attributes: Map<String, String>,
 ) {
   val span = token as? Span ?: return
-  attributes.forEach { (key, value) ->
+  val safeAttributes = sanitizeTelemetryAttributes(attributes)
+  safeAttributes.forEach { (key, value) ->
     span.setStringAttribute(key, value)
   }
   when (status) {
     ActivityStatus.OK -> span.setStatus(StatusData.Ok)
     ActivityStatus.ERROR -> span.setStatus(
-      StatusData.Error(attributes["exception.message"] ?: attributes["http.status"] ?: "error")
+      StatusData.Error(
+        safeAttributes["exception.message"]
+          ?: safeAttributes["http.status"]
+          ?: "error",
+      ),
     )
   }
   span.end()
