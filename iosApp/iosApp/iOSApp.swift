@@ -3,7 +3,6 @@ import WidgetKit
 
 import FirebaseMessaging
 import FirebaseCore
-import Sentry
 
 import shared
 
@@ -33,13 +32,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
   }
   
   func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-    SentrySDK.start { options in
-      options.dsn = "https://2d3e642ffffb0f518635c9ec53be890d@o4506836867022848.ingest.us.sentry.io/4508575166169088"
-      
-      options.tracesSampleRate = 1.0
-      options.profilesSampleRate = 1.0
-    }
-    
     let defaults = UserDefaults.standard
     
     if !defaults.bool(forKey: "hasPreviouslyLaunched") {

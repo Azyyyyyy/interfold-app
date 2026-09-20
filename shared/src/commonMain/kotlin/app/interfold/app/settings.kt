@@ -536,11 +536,21 @@ data class Settings(
    */
   @SerialName("cloudflare_access_near_expiry_skew_minutes")
   val cloudflareAccessNearExpirySkewMinutes: Int = 5,
+
+  @SerialName("share_activity_with_server")
+  val shareActivityWithServer: Boolean = false,
+
+  @SerialName("otlp_endpoint")
+  val otlpEndpoint: String = "",
+
+  @SerialName("activity_event_capacity")
+  val activityEventCapacity: Int = DEFAULT_ACTIVITY_EVENT_CAPACITY,
 ) {
   fun serialize() = globalSerializer.encodeToString(this)
 
   companion object {
     const val DEFAULT_API_ENDPOINT = "https://api.interfold.co.uk"
+    const val DEFAULT_ACTIVITY_EVENT_CAPACITY = 500
     fun deserialize(json: String) = globalSerializer.decodeFromString<Settings>(json)
   }
 }

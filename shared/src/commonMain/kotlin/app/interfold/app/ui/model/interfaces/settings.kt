@@ -79,6 +79,9 @@ interface SettingsInterface : SettingsReadInterface {
   fun setIsSinglet(isSinglet: Boolean)
   fun setInstallServiceWorker(installServiceWorker: Boolean)
   fun setApiEndpoint(apiEndpoint: String)
+  fun setShareActivityWithServer(shareActivityWithServer: Boolean)
+  fun setOtlpEndpoint(otlpEndpoint: String)
+  fun setActivityEventCapacity(activityEventCapacity: Int)
   fun isAppInstalled(): Boolean
 
   suspend fun getEncryptionKey(): String
@@ -336,6 +339,21 @@ class SettingsInterfaceImpl(
   override fun setApiEndpoint(apiEndpoint: String) =
     updateSettings {
       it.copy(apiEndpoint = apiEndpoint)
+    }
+
+  override fun setShareActivityWithServer(shareActivityWithServer: Boolean) =
+    updateSettings {
+      it.copy(shareActivityWithServer = shareActivityWithServer)
+    }
+
+  override fun setOtlpEndpoint(otlpEndpoint: String) =
+    updateSettings {
+      it.copy(otlpEndpoint = otlpEndpoint)
+    }
+
+  override fun setActivityEventCapacity(activityEventCapacity: Int) =
+    updateSettings {
+      it.copy(activityEventCapacity = activityEventCapacity.coerceAtLeast(1))
     }
 
   override fun isAppInstalled(): Boolean = platformUtilities.isAppInstalled()

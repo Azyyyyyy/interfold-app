@@ -50,6 +50,6 @@ actual fun localeFormatNumber(number: Number): String =
 actual fun <T> List<T>.sortedLocaleAware(selector: (T) -> String): List<T> =
   sortedWith(compareBy(Collator.getInstance(), selector))
 
-actual fun platformLog(tag: String?, message: String) {
+actual fun writePlatformLog(tag: String?, message: String) {
   Log.i(tag ?: "INTERFOLD", message)
 }

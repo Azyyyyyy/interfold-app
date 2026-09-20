@@ -71,6 +71,6 @@ actual fun localeFormatNumber(number: Number): String =
 actual fun <T> List<T>.sortedLocaleAware(selector: (T) -> String): List<T> =
   sortedWith(compareBy(selector)) // TODO
 
-actual fun platformLog(tag: String?, message: String) {
+actual fun writePlatformLog(tag: String?, message: String) {
   println("[${tag ?: "INTERFOLD"}]: $message")
 }

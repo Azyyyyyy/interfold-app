@@ -117,6 +117,7 @@ import interfoldapp.shared.resources.logout
 import interfoldapp.shared.resources.logout_body
 import interfoldapp.shared.resources.notifications
 import interfoldapp.shared.resources.ok
+import interfoldapp.shared.resources.activity
 import interfoldapp.shared.resources.open_source_licenses
 import interfoldapp.shared.resources.pluralkit
 import interfoldapp.shared.resources.recovery_code
@@ -140,6 +141,7 @@ import interfoldapp.shared.resources.tooltip_discord_account_desc
 import interfoldapp.shared.resources.tooltip_google_account_desc
 import interfoldapp.shared.resources.tooltip_logout_desc
 import interfoldapp.shared.resources.tooltip_notifications_desc
+import interfoldapp.shared.resources.tooltip_activity_desc
 import interfoldapp.shared.resources.tooltip_open_source_licenses_desc
 import interfoldapp.shared.resources.tooltip_plural_kit_import_desc
 import interfoldapp.shared.resources.tooltip_plural_kit_import_title
@@ -326,6 +328,12 @@ fun SettingsRootScreen(
           SettingsSection(
             app_info,
             settingsData,
+            { SettingsNavigationItem(
+              cardGroupPosition = it,
+              text = Res.string.activity.compose,
+              spotlightDescription = Res.string.tooltip_activity_desc.compose,
+              onClick = component::navigateToActivity
+            ) },
             { SettingsNavigationItem(
               cardGroupPosition = it,
               text = Res.string.open_source_licenses.compose,

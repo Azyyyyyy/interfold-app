@@ -229,6 +229,21 @@ kotlin {
     androidMain.dependsOn(mobileMain)
     iosMain.dependsOn(mobileMain)
 
+    val otelKotlinVersion = "0.7.0"
+    val otelMain by creating {
+      dependsOn(commonMain)
+      languageSettings.optIn("io.opentelemetry.kotlin.ExperimentalApi")
+      dependencies {
+        implementation("io.opentelemetry.kotlin:core:$otelKotlinVersion")
+        implementation("io.opentelemetry.kotlin:implementation:$otelKotlinVersion")
+        implementation("io.opentelemetry.kotlin:exporters-otlp:$otelKotlinVersion")
+        implementation("io.opentelemetry.kotlin:exporters-persistence:$otelKotlinVersion")
+        implementation("io.opentelemetry.kotlin:instrumentation-ktor-client:$otelKotlinVersion")
+      }
+    }
+    androidMain.dependsOn(otelMain)
+    iosMain.dependsOn(otelMain)
+
     val wasmJsMain by getting {
       dependencies {
         implementation("io.ktor:ktor-client-js-wasm-js:$ktorVersion")
@@ -243,6 +258,7 @@ kotlin {
         implementation("com.nimbusds:nimbus-jose-jwt:9.47")
       }
     }
+    desktopMain.dependsOn(otelMain)
 
     val commonTest by getting {
       dependencies {
@@ -309,6 +325,7 @@ kotlin {
       languageSettings.optIn("androidx.compose.foundation.layout.ExperimentalLayoutApi")
       languageSettings.optIn("androidx.compose.material3.ExperimentalMaterial3Api")
       languageSettings.optIn("androidx.compose.material3.ExperimentalMaterial3ExpressiveApi")
+      languageSettings.optIn("io.opentelemetry.kotlin.ExperimentalApi")
     }
   }
 }

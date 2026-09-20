@@ -1,5 +1,6 @@
 package app.interfold.app.api
 
+import app.interfold.app.telemetry.installOpenTelemetryKtorClient
 import app.interfold.app.utils.globalSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
@@ -21,6 +22,7 @@ actual val client: HttpClient = HttpClient(OkHttp) {
     socketTimeoutMillis = Long.MAX_VALUE
   }
   installCloudflareAccessHeaders()
+  installOpenTelemetryKtorClient()
 }
 
 internal actual fun connectToPhoenixChannel(

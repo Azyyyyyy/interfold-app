@@ -505,6 +505,19 @@
     <string name="contents">Contents</string>
 
     <string name="open_source_licenses">Open source licenses</string>
+    <string name="activity">Activity</string>
+    <string name="activity_share_with_server">Share activity with my Interfold server</string>
+    <string name="activity_custom_otlp">Custom OTLP endpoint</string>
+    <string name="activity_server_otlp">This server shares activity at %1$s</string>
+    <string name="activity_server_no_otlp">This server does not share an OTLP address. Activity stays on this device.</string>
+    <string name="activity_export_unavailable_web">The web app keeps activity on this device. OpenTelemetry export is not available here.</string>
+    <string name="activity_filter_all">All</string>
+    <string name="activity_filter_network">Network</string>
+    <string name="activity_filter_logs">platformLog</string>
+    <string name="activity_filter_errors">Errors</string>
+    <string name="activity_clear">Clear</string>
+    <string name="activity_copy">Copy</string>
+    <string name="activity_empty">Nothing recorded yet. Connect or use the app, then check back.</string>
     <string name="server_status">Server status</string>
 
     <string name="google_account_link_success">Your Google account was successfully linked!</string>
@@ -722,6 +735,9 @@
     <string name="tooltip_delete_account_desc">This action will permanently delete your account and all associated data. You will be logged out of the app and all data will be permanently lost.</string>
     <string name="tooltip_wipe_alters_desc">This action will permanently delete all of your alters from your system. This will not delete any other data, only the alters themselves.</string>
 
+    <string name="tooltip_activity_desc">Shows recent app activity recorded on this device. Sharing with a server is off unless you turn it on.</string>
+    <string name="tooltip_activity_share_with_server_desc">When enabled, the app asks your Interfold instance for an OTLP address and, if one is advertised, exports traces there. Nothing is sent to a vendor crash service. If the instance does not share an address, activity stays on this device.</string>
+    <string name="tooltip_activity_custom_otlp_desc">Optional. Send the same local activity to a collector you run, such as http://host:4318. Independent of the server toggle.</string>
     <string name="tooltip_open_source_licenses_desc">This screen contains a list of all open source libraries and software used by the Interfold app.</string>
     <string name="tooltip_server_status_desc">This button opens a link to the Interfold server status page. If the app is misbehaving, you can check here to see if our servers are down or under maintenance!</string>
 
