@@ -16,6 +16,9 @@
     <string name="login_google">Log in with Google</string>
     <string name="login_discord">Log in with Discord</string>
     <string name="login_apple">Log in with Apple</string>
+    <string name="login_cloudflare">Continue with Cloudflare</string>
+    <string name="login_methods_loading">Checking sign-in options…</string>
+    <string name="login_methods_unavailable">Could not load sign-in options. Check your server URL.</string>
     <string name="or_lowercase">or</string>
 
     <string name="direct_token_login_title">Direct token login</string>

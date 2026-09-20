@@ -2,6 +2,7 @@
 
 package app.interfold.app.telemetry
 
+import app.interfold.app.api.CloudflareAccessCredentials
 import io.ktor.client.HttpClientConfig
 import io.ktor.client.plugins.api.Send
 import io.ktor.client.plugins.api.createClientPlugin
@@ -55,7 +56,10 @@ private val ImageFetcherTelemetryPlugin = createClientPlugin("interfold-image-te
 private object KtorHeaderSetter : TextMapSetter<HttpRequestBuilder> {
   override fun set(carrier: HttpRequestBuilder?, key: String, value: String) {
     if (carrier == null) return
+    // Never let W3C inject overwrite or invent auth material.
     if (key.equals("Authorization", ignoreCase = true)) return
+    if (key.equals(CloudflareAccessCredentials.JWT_ASSERTION_HEADER, ignoreCase = true)) return
+    if (key.equals("Cookie", ignoreCase = true)) return
     carrier.headers[key] = value
   }
 }

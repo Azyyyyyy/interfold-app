@@ -15,7 +15,9 @@ import app.interfold.app.ui.compose.LocalSpotlightTooltipsEnabled
 import app.interfold.app.ui.compose.screens.main.MainAppScreen
 import app.interfold.app.ui.compose.screens.onboarding.OnboardingScreen
 import app.interfold.app.ui.compose.theme.InterTheme
+import app.interfold.app.ui.model.CloudflareAccessSilentRefresh
 import app.interfold.app.ui.model.RootComponent
+import app.interfold.app.api.secondsUntilAccessJwtNearExpiry
 import app.interfold.app.utils.DevicePlatform
 import app.interfold.app.utils.InitPushNotifications
 import app.interfold.app.utils.PlatformEvent
@@ -25,7 +27,8 @@ import app.interfold.app.utils.kamelConfig
 import com.arkivanov.decompose.ExperimentalDecomposeApi
 import com.arkivanov.decompose.extensions.compose.experimental.stack.ChildStack
 import io.kamel.image.config.LocalKamelConfig
-
+import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.seconds
 // If only value classes could be `const`...
 val GLOBAL_PADDING = 16.dp
 
@@ -225,6 +228,23 @@ fun RootScreen(
         }
       }
     }
+  }
+
+  // Schedule a single foreground Access JWT rotation when we enter the near-expiry window.
+  // Restarts when the stored JWT (or skew) changes after a successful refresh — no polling loop.
+  LaunchedEffect(
+    settings.token,
+    settings.cloudflareAccessJwt,
+    settings.cloudflareAccessNearExpirySkewMinutes,
+  ) {
+    if (settings.token == null) return@LaunchedEffect
+    val waitSeconds = secondsUntilAccessJwtNearExpiry(settings.cloudflareAccessJwt) ?: return@LaunchedEffect
+    delay(waitSeconds.seconds)
+    CloudflareAccessSilentRefresh.refreshIfNeeded(
+      settings = component.settings,
+      platformUtilities = component.platformUtilities,
+      force = false,
+    )
   }
 
   CompositionLocalProvider(

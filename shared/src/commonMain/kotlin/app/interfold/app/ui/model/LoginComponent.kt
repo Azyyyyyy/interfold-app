@@ -1,6 +1,10 @@
 package app.interfold.app.ui.model
 
 import app.interfold.app.BuildInfo
+import app.interfold.app.api.LoginMethods
+import app.interfold.app.api.LoginMethodsStatus
+import app.interfold.app.api.fetchLoginMethods
+import app.interfold.app.api.isAccessJwtNearExpiry
 import app.interfold.app.ui.compose.screens.IS_BETA
 import app.interfold.app.ui.model.interfaces.SettingsInterface
 import app.interfold.app.ui.registerStateHandler
@@ -16,6 +20,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 
@@ -35,6 +41,7 @@ interface LoginComponent {
   fun logInWithGoogle(colorSchemeParams: ColorSchemeParams)
   fun logInWithDiscord(colorSchemeParams: ColorSchemeParams)
   fun logInWithApple(colorSchemeParams: ColorSchemeParams)
+  fun logInWithCloudflare(colorSchemeParams: ColorSchemeParams)
 
   fun incrementDirectTokenLoginTimesPressed()
   fun closeDirectTokenDialog()
@@ -42,13 +49,16 @@ interface LoginComponent {
 
   fun updateServerUrl(url: String)
   fun checkServerHealth()
+  fun fetchLoginMethods()
 
   @Serializable
   data class Model(
     val directTokenTimesPressed: Int = 0,
     val directTokenDialogOpen: Boolean = false,
     val serverUrl: String = "",
-    val serverHealthStatus: ServerHealthStatus = ServerHealthStatus.UNKNOWN
+    val serverHealthStatus: ServerHealthStatus = ServerHealthStatus.UNKNOWN,
+    val loginMethods: LoginMethods = LoginMethods(),
+    val loginMethodsStatus: LoginMethodsStatus = LoginMethodsStatus.Idle,
   )
 }
 
@@ -65,21 +75,39 @@ private fun buildLoginUrl(provider: String, apiEndpoint: String): String =
           "&is_beta=${IS_BETA}" +
           "&redirect_uri=${buildRedirectUri("auth/token")}"
 
+private fun buildCloudflareLoginUrl(apiEndpoint: String): String =
+  "$apiEndpoint/auth/cloudflare?redirect_uri=${buildRedirectUri("auth/token")}"
+
 internal class LoginComponentImpl(
   componentContext: CommonComponentContext
 ) : LoginComponent, CommonComponentContext by componentContext {
   private val handler = retainStateHandler { LoginComponent.Model(serverUrl = settings.data.value.apiEndpoint) }
   init {
     registerStateHandler(handler)
+    fetchLoginMethods()
   }
   override val model = handler.model
 
   private val scope = coroutineScope(coroutineContext + SupervisorJob())
   private var healthCheckJob: Job? = null
+  private var loginMethodsJob: Job? = null
 
   override fun logInWithGoogle(colorSchemeParams: ColorSchemeParams) = logInWithProvider("google", colorSchemeParams)
   override fun logInWithDiscord(colorSchemeParams: ColorSchemeParams) = logInWithProvider("discord", colorSchemeParams)
   override fun logInWithApple(colorSchemeParams: ColorSchemeParams) = logInWithProvider("apple", colorSchemeParams)
+
+  override fun logInWithCloudflare(colorSchemeParams: ColorSchemeParams) {
+    val serverUrl = model.value.serverUrl.trimEnd('/')
+    settings.setApiEndpoint(serverUrl)
+    platformUtilities.openCloudflareAccessSession(
+      url = buildCloudflareLoginUrl(serverUrl),
+      apiBaseUrl = serverUrl,
+      silent = false,
+      onAccessJwt = { jwt -> settings.setCloudflareAccessJwt(jwt) },
+      onFinished = {},
+      onFailed = {},
+    )
+  }
 
   private fun logInWithProvider(provider: String, colorSchemeParams: ColorSchemeParams) {
     val serverUrl = model.value.serverUrl.trimEnd('/')
@@ -95,7 +123,9 @@ internal class LoginComponentImpl(
     model.tryEmit(
       model.value.copy(
         serverUrl = url,
-        serverHealthStatus = ServerHealthStatus.UNKNOWN
+        serverHealthStatus = ServerHealthStatus.UNKNOWN,
+        loginMethodsStatus = LoginMethodsStatus.Idle,
+        loginMethods = LoginMethods(),
       )
     )
   }
@@ -120,8 +150,37 @@ internal class LoginComponentImpl(
           else -> ServerHealthStatus.UNREACHABLE
         }
         model.tryEmit(model.value.copy(serverHealthStatus = status))
+        if (status == ServerHealthStatus.HEALTHY || status == ServerHealthStatus.DEGRADED) {
+          fetchLoginMethods()
+        }
       } catch (_: Exception) {
         model.tryEmit(model.value.copy(serverHealthStatus = ServerHealthStatus.UNREACHABLE))
+      }
+    }
+  }
+
+  override fun fetchLoginMethods() {
+    loginMethodsJob?.cancel()
+    val baseUrl = model.value.serverUrl.trimEnd('/')
+    if (baseUrl.isBlank()) return
+
+    model.tryEmit(model.value.copy(loginMethodsStatus = LoginMethodsStatus.Loading))
+    loginMethodsJob = scope.launch {
+      try {
+        val (methods, _) = fetchLoginMethods(baseUrl)
+        model.tryEmit(
+          model.value.copy(
+            loginMethods = methods,
+            loginMethodsStatus = LoginMethodsStatus.Ready,
+          )
+        )
+      } catch (_: Exception) {
+        model.tryEmit(
+          model.value.copy(
+            loginMethods = LoginMethods(),
+            loginMethodsStatus = LoginMethodsStatus.Failed,
+          )
+        )
       }
     }
   }
@@ -154,5 +213,63 @@ internal class LoginComponentImpl(
   override fun logInWithDirectToken(token: String) {
     settings.setToken(token = token)
     platformUtilities.exitApplication(ExitApplicationType.ForcedRestart)
+  }
+}
+
+/**
+ * Foreground silent Cloudflare Access application-token rotation (pattern 2).
+ * Single-flight; falls back to interactive Cloudflare login on failure.
+ */
+object CloudflareAccessSilentRefresh {
+  private val mutex = Mutex()
+
+  suspend fun refreshIfNeeded(
+    settings: SettingsInterface,
+    platformUtilities: app.interfold.app.utils.PlatformUtilities,
+    force: Boolean = false,
+  ): Boolean = mutex.withLock {
+    val jwt = settings.data.value.cloudflareAccessJwt
+    if (!force && !isAccessJwtNearExpiry(jwt)) return false
+
+    val apiBase = settings.data.value.apiEndpoint.trimEnd('/')
+    if (apiBase.isBlank()) return false
+
+    var captured: String? = null
+    var failed = false
+    val done = kotlinx.coroutines.CompletableDeferred<Unit>()
+
+    platformUtilities.openCloudflareAccessSession(
+      url = apiBase,
+      apiBaseUrl = apiBase,
+      silent = true,
+      onAccessJwt = { captured = it },
+      onFinished = { done.complete(Unit) },
+      onFailed = {
+        failed = true
+        done.complete(Unit)
+      },
+    )
+    done.await()
+
+    val newJwt = captured
+    if (!failed && !newJwt.isNullOrBlank()) {
+      settings.setCloudflareAccessJwt(newJwt)
+      return true
+    }
+
+    // Escalate to interactive login URL so the user can re-auth through Access.
+    val interactiveDone = kotlinx.coroutines.CompletableDeferred<Unit>()
+    var interactiveJwt: String? = null
+    platformUtilities.openCloudflareAccessSession(
+      url = buildCloudflareLoginUrl(apiBase),
+      apiBaseUrl = apiBase,
+      silent = false,
+      onAccessJwt = { interactiveJwt = it },
+      onFinished = { interactiveDone.complete(Unit) },
+      onFailed = { interactiveDone.complete(Unit) },
+    )
+    interactiveDone.await()
+    interactiveJwt?.let { settings.setCloudflareAccessJwt(it) }
+    !interactiveJwt.isNullOrBlank()
   }
 }

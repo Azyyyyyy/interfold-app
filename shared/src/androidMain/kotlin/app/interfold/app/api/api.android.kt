@@ -21,6 +21,7 @@ actual val client: HttpClient = HttpClient(OkHttp) {
     requestTimeoutMillis = Long.MAX_VALUE
     socketTimeoutMillis = Long.MAX_VALUE
   }
+  installCloudflareAccessHeaders()
   installOpenTelemetryKtorClient()
 }
 

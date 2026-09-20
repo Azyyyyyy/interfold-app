@@ -39,9 +39,8 @@ class KtorWebSocketTransport(
       try {
         session = client.webSocketSession {
           url(this@KtorWebSocketTransport.url)
-//          headers {
-//            append("fly-prefer-region", "fra")
-//          }
+          // Cf-Access-Jwt-Assertion (and other defaults) come from the shared
+          // HttpClient's defaultRequest when Access is enabled.
         }
         readyState = Transport.ReadyState.OPEN
         socketFlow.tryEmit(SocketEvent.OpenEvent(wasReconnect = isReconnect))

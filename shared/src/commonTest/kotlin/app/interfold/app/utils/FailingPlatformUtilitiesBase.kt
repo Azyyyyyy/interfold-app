@@ -41,6 +41,14 @@ abstract class FailingPlatformUtilitiesBase : CommonPlatformUtilities {
     colorSchemeParams: ColorSchemeParams,
     webURLOpenBehavior: WebURLOpenBehavior,
   ) { unsupported() }
+  override fun openCloudflareAccessSession(
+    url: String,
+    apiBaseUrl: String,
+    silent: Boolean,
+    onAccessJwt: (String) -> Unit,
+    onFinished: () -> Unit,
+    onFailed: (String) -> Unit,
+  ) { unsupported() }
   override fun updateWidgets(sessionInvalidated: Boolean) { unsupported() }
   override fun performAdditionalPushNotificationSetup() { unsupported() }
   override suspend fun reinitPushNotifications(settings: Settings) { unsupported() }

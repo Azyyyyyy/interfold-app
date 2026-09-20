@@ -15,6 +15,7 @@ actual val client: HttpClient = HttpClient(Darwin) {
   install(ContentNegotiation) {
     json(globalSerializer)
   }
+  installCloudflareAccessHeaders()
 
   engine {
     configureRequest {

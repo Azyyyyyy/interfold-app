@@ -53,6 +53,8 @@ object ClientActivityStore {
     message: String? = null,
     startedAtMillis: Long = Clock.System.now().toEpochMilliseconds(),
   ): ActivityEvent {
+    val safeAttributes = sanitizeTelemetryAttributes(attributes)
+    val safeMessage = sanitizeTelemetryText(message)
     lateinit var recorded: ActivityEvent
     _events.update { current ->
       recorded = ActivityEvent(
@@ -62,8 +64,8 @@ object ClientActivityStore {
         status = status,
         startedAtMillis = startedAtMillis,
         durationMillis = durationMillis.coerceAtLeast(0),
-        attributes = attributes,
-        message = message,
+        attributes = safeAttributes,
+        message = safeMessage,
       )
       val next = current + recorded
       val limit = capacity

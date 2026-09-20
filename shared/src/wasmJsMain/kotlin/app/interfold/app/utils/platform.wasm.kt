@@ -401,9 +401,41 @@ val platformUtilities = object : PlatformUtilities {
         }
     }
 
+    override fun openCloudflareAccessSession(
+        url: String,
+        apiBaseUrl: String,
+        silent: Boolean,
+        onAccessJwt: (String) -> Unit,
+        onFinished: () -> Unit,
+        onFailed: (String) -> Unit,
+    ) {
+        // Same-tab navigation keeps Access cookies in the browser jar for fetch/WS.
+        // Mirror CF_Authorization into settings when readable (often HttpOnly → null).
+        val existing = extractCfAuthorizationFromDocumentCookie()
+        if (existing != null) {
+            onAccessJwt(existing)
+        }
+        if (silent) {
+            // Trigger CF's silent app-token rotation via a same-origin navigation.
+            window.location.assign(apiBaseUrl.trimEnd('/'))
+            onFinished()
+            return
+        }
+        window.location.assign(url)
+        onFinished()
+    }
+
     // Stubs: not implemented on web
     override fun performAdditionalPushNotificationSetup() = Unit
     override fun updateWidgets(sessionInvalidated: Boolean) = Unit
+}
+
+private fun extractCfAuthorizationFromDocumentCookie(): String? {
+    return try {
+        app.interfold.app.api.extractCfAuthorizationCookie(kotlinx.browser.document.cookie)
+    } catch (_: Exception) {
+        null
+    }
 }
 
 const val SETTINGS_LOCALSTORAGE_KEY = "interfold_settings"

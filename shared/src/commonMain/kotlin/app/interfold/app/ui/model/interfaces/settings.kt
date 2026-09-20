@@ -14,6 +14,7 @@ import app.interfold.app.FontSizeScalar
 import app.interfold.app.Settings
 import app.interfold.app.SpotlightLongPressTimeout
 import app.interfold.app.ThemeColor
+import app.interfold.app.api.CloudflareAccessCredentials
 import app.interfold.app.utils.FirebaseConfigProvider
 import app.interfold.app.utils.PlatformUtilities
 import app.interfold.app.utils.PublicKeyProvider
@@ -38,6 +39,7 @@ interface SettingsInterface : SettingsReadInterface {
   fun pushSettings(settings: Settings, updateWidgets: Boolean = false)
   fun nukeEverything(fully: Boolean = true)
   fun setToken(token: String?)
+  fun setCloudflareAccessJwt(jwt: String?)
 
   fun clearEncryptionKey()
 
@@ -93,11 +95,22 @@ class SettingsInterfaceImpl(
   private val _settings = MutableStateFlow(initialSettings)
   override val data: StateFlow<Settings> = _settings
 
+  init {
+    CloudflareAccessCredentials.update(
+      jwt = initialSettings.cloudflareAccessJwt,
+      nearExpirySkewMinutes = initialSettings.cloudflareAccessNearExpirySkewMinutes,
+    )
+  }
+
   @Composable
   override fun collectAsState() = data.collectAsState()
 
   override fun pushSettings(settings: Settings, updateWidgets: Boolean) {
     _settings.tryEmit(settings)
+    CloudflareAccessCredentials.update(
+      jwt = settings.cloudflareAccessJwt,
+      nearExpirySkewMinutes = settings.cloudflareAccessNearExpirySkewMinutes,
+    )
     if(updateWidgets) { platformUtilities.updateWidgets() }
   }
 
@@ -109,6 +122,8 @@ class SettingsInterfaceImpl(
         encryptedEncryptionKey = if(fully) null else it.encryptedEncryptionKey,
         showPushNotifications = if (fully) false else it.showPushNotifications,
         hasViewedOnboarding = !fully,
+        cloudflareAccessJwt = if (fully) null else it.cloudflareAccessJwt,
+        apiEndpoint = it.apiEndpoint,
       )
     }
 
@@ -116,7 +131,11 @@ class SettingsInterfaceImpl(
   override fun setToken(token: String?) {
     val wasLoggedOut = _settings.value.token == null
     updateSettings(updateWidgets = true) {
-      it.copy(token = token)
+      if (token == null) {
+        it.copy(token = null, cloudflareAccessJwt = null)
+      } else {
+        it.copy(token = token)
+      }
     }
 
     // Login just completed — reinit Firebase against the new session's endpoint.
@@ -125,6 +144,12 @@ class SettingsInterfaceImpl(
     if (wasLoggedOut && token != null) {
       val snapshot = _settings.value
       GlobalScope.launch { platformUtilities.reinitPushNotifications(snapshot) }
+    }
+  }
+
+  override fun setCloudflareAccessJwt(jwt: String?) {
+    updateSettings {
+      it.copy(cloudflareAccessJwt = jwt?.takeIf { value -> value.isNotBlank() })
     }
   }
 
@@ -342,6 +367,10 @@ class SettingsInterfaceImpl(
     val new = block(old)
     _settings.tryEmit(new)
     settingsSaver(new)
+    CloudflareAccessCredentials.update(
+      jwt = new.cloudflareAccessJwt,
+      nearExpirySkewMinutes = new.cloudflareAccessNearExpirySkewMinutes,
+    )
 
     if(updateWidgets) {
       platformUtilities.updateWidgets()

@@ -41,6 +41,7 @@ import io.ktor.client.request.post
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.isSuccess
@@ -528,6 +529,9 @@ val httpBuilder: (token: String?, body: Any?) -> (HttpRequestBuilder.() -> Unit)
       if (token != null) {
         header("Authorization", "Bearer $token")
       }
+      CloudflareAccessCredentials.accessJwt?.let { accessJwt ->
+        header(CloudflareAccessCredentials.JWT_ASSERTION_HEADER, accessJwt)
+      }
       if (body != null && body !is MultiPartFormDataContent) {
         header("Content-Type", "application/json")
       }
@@ -647,6 +651,32 @@ suspend fun checkHealthReady(endpoint: String): Boolean =
     get(endpoint, null, "health/ready").status.isSuccess()
   } catch (e: Exception) {
     false
+  }
+
+/**
+ * Fetches `GET /auth/login-methods` from the API host (not under `/api`).
+ * @return methods plus whether the response was treated as an Access-gated challenge.
+ */
+suspend fun fetchLoginMethods(apiBaseUrl: String): Pair<LoginMethods, Boolean> =
+  withContext(ioDispatcher) {
+    val base = apiBaseUrl.trimEnd('/')
+    try {
+      val response = client.get("$base/auth/login-methods")
+      val body = response.bodyAsText()
+      val location = response.headers[HttpHeaders.Location]
+      if (looksLikeCloudflareAccessChallenge(response.status.value, location, body)) {
+        return@withContext LoginMethods(cloudflare = true) to true
+      }
+      // Non-JSON success bodies (e.g. Access HTML served as 200) → treat as Access-on.
+      val trimmed = body.trimStart()
+      if (trimmed.startsWith("<") || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) {
+        return@withContext LoginMethods(cloudflare = true) to true
+      }
+      val parsed = globalSerializer.decodeFromString(LoginMethods.serializer(), body)
+      parsed to false
+    } catch (_: Exception) {
+      LoginMethods() to false
+    }
   }
 
 @Serializable
