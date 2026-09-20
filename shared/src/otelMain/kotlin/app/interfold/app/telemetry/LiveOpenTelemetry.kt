@@ -26,6 +26,8 @@ import io.opentelemetry.kotlin.tracing.TracerProvider
 internal const val KTOR_INSTRUMENTATION_SCOPE =
   "io.opentelemetry.kotlin.instrumentation.ktor.client"
 
+internal const val OTEL_SERVICE_NAME = "interfold-client"
+
 /**
  * Stable [OpenTelemetry] for the Ktor plugin. The plugin reads a tracer at
  * install time, so [tracerProvider] always returns a forwarding tracer.
@@ -33,7 +35,7 @@ internal const val KTOR_INSTRUMENTATION_SCOPE =
 internal object LiveOpenTelemetry : OpenTelemetry {
   @Volatile
   var sdk: OpenTelemetry = createOpenTelemetry {
-    serviceName = "interfold-client"
+    serviceName = OTEL_SERVICE_NAME
     tracerProvider {
       export { KtorActivitySpanProcessor }
     }

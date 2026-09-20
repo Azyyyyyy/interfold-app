@@ -536,6 +536,7 @@ data class Settings(
 
   companion object {
     const val DEFAULT_API_ENDPOINT = "https://api.interfold.co.uk"
+    const val ACTIVITY_EVENT_CAPACITY = 500
     fun deserialize(json: String) = globalSerializer.decodeFromString<Settings>(json)
   }
 }

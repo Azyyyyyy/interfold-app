@@ -1,18 +1,13 @@
 package app.interfold.app.telemetry
 
 import app.interfold.app.Settings
-import app.interfold.app.api.client
-import io.ktor.client.call.body
-import io.ktor.client.request.get
-import io.ktor.http.isSuccess
+import app.interfold.app.api.fetchOtlpDiscovery
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.time.Clock
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
 
 const val PLATFORM_LOG_TRACER = "app.interfold.platform-log"
 const val APP_TRACER = "app.interfold"
@@ -24,12 +19,6 @@ sealed interface OtlpDiscoveryState {
   data object Unavailable : OtlpDiscoveryState
   data class Available(val url: String) : OtlpDiscoveryState
 }
-
-@Serializable
-internal data class OtlpDiscoveryResponse(
-  @SerialName("otlpHttpEndpoint")
-  val otlpHttpEndpoint: String? = null,
-)
 
 object Telemetry {
   private val mutex = Mutex()
@@ -63,7 +52,7 @@ object Telemetry {
 
   private suspend fun refreshDiscoveryLocked(apiEndpoint: String): String? {
     _discovery.value = OtlpDiscoveryState.Checking
-    val result = fetchOtlpDiscovery(apiEndpoint)
+    val result = resolveOtlpDiscovery(apiEndpoint)
     _discovery.value = result
     return (result as? OtlpDiscoveryState.Available)?.url
   }
@@ -220,19 +209,9 @@ internal fun otlpDiscoveryState(statusCode: Int, endpoint: String?): OtlpDiscove
   return if (url.isEmpty()) OtlpDiscoveryState.Unavailable else OtlpDiscoveryState.Available(url)
 }
 
-internal suspend fun fetchOtlpDiscovery(apiEndpoint: String): OtlpDiscoveryState {
-  return try {
-    val base = apiEndpoint.trimEnd('/')
-    val response = client.get("$base/api/telemetry/otlp")
-    val body = if (response.status.isSuccess()) {
-      response.body<OtlpDiscoveryResponse>()
-    } else {
-      null
-    }
-    otlpDiscoveryState(response.status.value, body?.otlpHttpEndpoint)
-  } catch (_: Exception) {
-    OtlpDiscoveryState.Unavailable
-  }
+internal suspend fun resolveOtlpDiscovery(apiEndpoint: String): OtlpDiscoveryState {
+  val (statusCode, advertised) = fetchOtlpDiscovery(apiEndpoint)
+  return otlpDiscoveryState(statusCode, advertised)
 }
 
 class EndpointSpanHandle internal constructor(

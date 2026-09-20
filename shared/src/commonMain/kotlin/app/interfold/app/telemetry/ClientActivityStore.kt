@@ -1,5 +1,6 @@
 package app.interfold.app.telemetry
 
+import app.interfold.app.Settings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,7 +29,7 @@ data class ActivityEvent(
 )
 
 object ClientActivityStore {
-  const val CAPACITY = 500
+  const val CAPACITY = Settings.ACTIVITY_EVENT_CAPACITY
 
   private var nextId = 1L
   private val _events = MutableStateFlow<List<ActivityEvent>>(emptyList())

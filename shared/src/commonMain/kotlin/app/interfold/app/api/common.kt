@@ -57,12 +57,7 @@ fun buildEndpointPayload(method: HttpMethod, path: String): Map<String, Any?> =
  *
  * Callers may merge W3C `traceparent` / `tracestate` from
  * [app.interfold.app.telemetry.Telemetry.beginEndpointSpan] as extra top-level
- * keys. The Interfold API `HandleEndpointProxyAsync` (server repo) should ignore
- * unknown JSON properties or add those two optional strings. If `traceparent`
- * is present, `TextMapPropagator.extract` into the current OTel context before
- * the proxied REST dispatch so server spans are children of the client span.
- * Do not persist these fields, and do not copy them onto downstream HTTP unless
- * that hop is also traced.
+ * keys. The server should ingest or ignore those fields.
  */
 fun buildEndpointPayload(
   method: HttpMethod,

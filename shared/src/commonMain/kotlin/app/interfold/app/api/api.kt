@@ -430,9 +430,10 @@ internal class KotlixPhoenixSocketSession(
           }
         }
         is SocketEvent.CloseEvent -> {
+          val normalClose = it.code.toInt() == 1000 || it.code.toInt() == 1001
           Telemetry.finishSpan(
             name = "phoenix.close",
-            status = ActivityStatus.ERROR,
+            status = if (normalClose) ActivityStatus.OK else ActivityStatus.ERROR,
             startedAtMillis = kotlin.time.Clock.System.now().toEpochMilliseconds(),
             attributes = mapOf("phoenix.close_code" to it.code.toString()),
             message = "Channel closed with code ${it.code}",
@@ -646,4 +647,23 @@ suspend fun checkHealthReady(endpoint: String): Boolean =
     get(endpoint, null, "health/ready").status.isSuccess()
   } catch (e: Exception) {
     false
+  }
+
+@Serializable
+internal data class OtlpDiscoveryResponse(
+  @SerialName("otlpHttpEndpoint")
+  val otlpHttpEndpoint: String? = null,
+)
+
+suspend fun fetchOtlpDiscovery(endpoint: String): Pair<Int, String?> =
+  try {
+    val response = get(endpoint, null, "api/telemetry/otlp")
+    val body = if (response.status.isSuccess()) {
+      response.body<OtlpDiscoveryResponse>()
+    } else {
+      null
+    }
+    response.status.value to body?.otlpHttpEndpoint
+  } catch (_: Exception) {
+    0 to null
   }

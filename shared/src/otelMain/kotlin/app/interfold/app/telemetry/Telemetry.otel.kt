@@ -28,8 +28,6 @@ import kotlinx.coroutines.launch
 import okio.FileSystem
 import okio.Path.Companion.toPath
 
-private const val SERVICE_NAME = "interfold-client"
-
 internal actual fun applyOtelExport(urls: List<String>) {
   val previous = LiveOpenTelemetry.sdk
   if (urls.isEmpty()) {
@@ -41,7 +39,7 @@ internal actual fun applyOtelExport(urls: List<String>) {
 }
 
 private fun createSdk(urls: List<String>): OpenTelemetry = createOpenTelemetry {
-  serviceName = SERVICE_NAME
+  serviceName = OTEL_SERVICE_NAME
   resource(mapOf("service.version" to BuildInfo.VERSION_NAME))
   tracerProvider {
     export {
