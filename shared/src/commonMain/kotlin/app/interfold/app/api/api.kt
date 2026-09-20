@@ -13,6 +13,8 @@ import app.interfold.app.api.model.MyFrontItem
 import app.interfold.app.api.model.MySystem
 import app.interfold.app.api.model.MyTag
 import app.interfold.app.api.model.Poll
+import app.interfold.app.telemetry.ActivityStatus
+import app.interfold.app.telemetry.Telemetry
 import app.interfold.app.utils.BuildConfig
 import app.interfold.app.utils.DevicePlatform
 import app.interfold.app.utils.globalSerializer
@@ -368,13 +370,15 @@ internal class KotlixPhoenixSocketSession(
   }
 
   private val socketFlow: SocketFlow = MutableSharedFlow(8 * 1024)
+  private var connectAttemptAtMillis = kotlin.time.Clock.System.now().toEpochMilliseconds()
   private var socket: Socket = Socket(
     url = "$endpoint/socket/websocket",
     paramsClosure = paramsClosure,
     socketFlow = socketFlow,
     scope = coroutineScope,
     transport = { url, socketFlow, decode ->
-      KtorWebSocketTransport(url, socketFlow, decode, client)
+      connectAttemptAtMillis = kotlin.time.Clock.System.now().toEpochMilliseconds()
+      KtorWebSocketTransport(url, socketFlow, decode)
     }
   ).apply {
     logger = if (BuildConfig.isDebug()) {
@@ -390,6 +394,13 @@ internal class KotlixPhoenixSocketSession(
     socketFlow.collect {
       when (it) {
         is SocketEvent.OpenEvent -> {
+          Telemetry.finishSpan(
+            name = if (it.wasReconnect) "phoenix.reconnect" else "phoenix.connect",
+            status = ActivityStatus.OK,
+            startedAtMillis = connectAttemptAtMillis,
+            attributes = mapOf("phoenix.reconnect" to it.wasReconnect.toString()),
+            message = null,
+          )
           socketChannel?.let { channel -> socket.remove(channel) }
           socketChannel = socket.channel("system:${userID}", params = paramsClosure(it.wasReconnect))
 
@@ -404,6 +415,13 @@ internal class KotlixPhoenixSocketSession(
           }
         }
         is SocketEvent.FailureEvent -> {
+          Telemetry.finishSpan(
+            name = "phoenix.failure",
+            status = ActivityStatus.ERROR,
+            startedAtMillis = connectAttemptAtMillis,
+            attributes = mapOf("exception.message" to (it.throwable.message ?: "Unknown error")),
+            message = it.throwable.message,
+          )
           errorPipeline.emit(it.throwable.message ?: "Unknown error")
         }
         is SocketEvent.MessageEvent -> {
@@ -412,6 +430,14 @@ internal class KotlixPhoenixSocketSession(
           }
         }
         is SocketEvent.CloseEvent -> {
+          val normalClose = it.code.toInt() == 1000 || it.code.toInt() == 1001
+          Telemetry.finishSpan(
+            name = "phoenix.close",
+            status = if (normalClose) ActivityStatus.OK else ActivityStatus.ERROR,
+            startedAtMillis = kotlin.time.Clock.System.now().toEpochMilliseconds(),
+            attributes = mapOf("phoenix.close_code" to it.code.toString()),
+            message = "Channel closed with code ${it.code}",
+          )
           errorPipeline.emit("Channel closed with code ${it.code}")
         }
       }
@@ -621,4 +647,23 @@ suspend fun checkHealthReady(endpoint: String): Boolean =
     get(endpoint, null, "health/ready").status.isSuccess()
   } catch (e: Exception) {
     false
+  }
+
+@Serializable
+internal data class OtlpDiscoveryResponse(
+  @SerialName("otlpHttpEndpoint")
+  val otlpHttpEndpoint: String? = null,
+)
+
+suspend fun fetchOtlpDiscovery(endpoint: String): Pair<Int, String?> =
+  try {
+    val response = get(endpoint, null, "api/telemetry/otlp")
+    val body = if (response.status.isSuccess()) {
+      response.body<OtlpDiscoveryResponse>()
+    } else {
+      null
+    }
+    response.status.value to body?.otlpHttpEndpoint
+  } catch (_: Exception) {
+    0 to null
   }

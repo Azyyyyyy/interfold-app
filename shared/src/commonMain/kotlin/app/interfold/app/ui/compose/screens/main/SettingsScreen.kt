@@ -25,6 +25,7 @@ import app.interfold.app.ui.compose.screens.main.settings.SettingsRootScreen
 import app.interfold.app.ui.compose.screens.main.settings.pages.SettingsAccessibilityScreen
 import app.interfold.app.ui.compose.screens.main.settings.pages.SettingsAppearanceScreen
 import app.interfold.app.ui.compose.screens.main.settings.pages.SettingsCustomFieldsScreen
+import app.interfold.app.ui.compose.screens.main.settings.pages.SettingsActivityScreen
 import app.interfold.app.ui.compose.screens.main.settings.pages.SettingsOpenSourceLicensesScreen
 import app.interfold.app.ui.compose.screens.main.settings.pages.SettingsSecurityScreen
 import app.interfold.app.ui.model.main.settings.SettingsComponent
@@ -56,6 +57,7 @@ fun SettingsScreen(
         is SettingsComponent.DetailsChild.SettingsSecurityChild -> SettingsSecurityScreen(child.component)
         is SettingsComponent.DetailsChild.SettingsCustomFieldsChild -> SettingsCustomFieldsScreen(child.component)
         is SettingsComponent.DetailsChild.SettingsOpenSourceLicensesChild -> SettingsOpenSourceLicensesScreen(child.component)
+        is SettingsComponent.DetailsChild.SettingsActivityChild -> SettingsActivityScreen(child.component)
       }
     },
     reduceMotion = reduceMotion,

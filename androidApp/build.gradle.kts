@@ -4,7 +4,6 @@ import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 
 plugins {
   id("com.android.application")
-  // id("io.sentry.android.gradle").version("4.5.1")
   id("org.jetbrains.compose")
   id("org.jetbrains.kotlin.plugin.compose")
   id("kotlin-parcelize")

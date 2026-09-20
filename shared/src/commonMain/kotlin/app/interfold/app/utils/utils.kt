@@ -1,6 +1,7 @@
 package app.interfold.app.utils
 
 import androidx.compose.runtime.Composable
+import app.interfold.app.telemetry.installImageFetcherTelemetry
 import io.kamel.core.config.Core
 import io.kamel.core.config.DefaultCacheSize
 import io.kamel.core.config.KamelConfig
@@ -62,6 +63,7 @@ val kamelConfig = KamelConfig {
         !httpResponse.status.isSuccess()
       }
     }
+    installImageFetcherTelemetry()
   }
 }
 
@@ -81,12 +83,18 @@ val noCacheKamelConfig = KamelConfig {
         !httpResponse.status.isSuccess()
       }
     }
+    installImageFetcherTelemetry()
   }
 }
 
 fun platformLog(message: String) = platformLog(null, message)
 
-expect fun platformLog(tag: String? = null, message: String)
+fun platformLog(tag: String? = null, message: String) {
+  writePlatformLog(tag, message)
+  app.interfold.app.telemetry.Telemetry.recordPlatformLog(tag, message)
+}
+
+expect fun writePlatformLog(tag: String? = null, message: String)
 
 val globalSerializersModule = SerializersModule {
   polymorphic(app.interfold.app.api.model.Poll::class) {

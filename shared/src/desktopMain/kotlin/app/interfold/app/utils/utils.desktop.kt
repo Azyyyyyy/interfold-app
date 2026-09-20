@@ -32,6 +32,6 @@ actual fun <T> List<T>.sortedLocaleAware(selector: (T) -> String): List<T> {
   return this // TODO
 }
 
-actual fun platformLog(tag: String?, message: String) {
+actual fun writePlatformLog(tag: String?, message: String) {
   println("[${tag ?: "INTERFOLD"}]: $message")
 }
