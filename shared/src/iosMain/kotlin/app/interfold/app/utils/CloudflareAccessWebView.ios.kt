@@ -9,7 +9,7 @@ import platform.Foundation.NSURL
 import platform.Foundation.NSURLRequest
 import platform.UIKit.UIApplication
 import platform.UIKit.UIBarButtonItem
-import platform.UIKit.UIBarButtonItemStyleDone
+import platform.UIKit.UIBarButtonItemStyle
 import platform.UIKit.UIColor
 import platform.UIKit.UIModalPresentationFullScreen
 import platform.UIKit.UINavigationController
@@ -22,7 +22,6 @@ import platform.WebKit.WKNavigationActionPolicy
 import platform.WebKit.WKNavigationDelegateProtocol
 import platform.WebKit.WKWebView
 import platform.WebKit.WKWebViewConfiguration
-import platform.darwin.NSObjectMeta
 
 @OptIn(ExperimentalForeignApi::class)
 internal fun presentCloudflareAccessWebView(
@@ -63,13 +62,15 @@ internal fun presentCloudflareAccessWebView(
     }
   } else {
     val nav = UINavigationController(rootViewController = hostVc)
-    hostVc.navigationItem.rightBarButtonItem = UIBarButtonItem(
-      title = "Done",
-      style = UIBarButtonItemStyleDone,
-      target = hostVc,
-      action = NSSelectorFromString("onDoneTapped"),
-    )
     root.presentViewController(nav, animated = true) {
+      // Prefer the nav bar's top item — UIViewController.navigationItem is not
+      // reliably exposed on all Kotlin/Native UIKit binding versions used in CI.
+      nav.navigationBar.topItem?.rightBarButtonItem = UIBarButtonItem(
+        title = "Done",
+        style = UIBarButtonItemStyle.Done,
+        target = hostVc,
+        action = NSSelectorFromString("onDoneTapped"),
+      )
       hostVc.load(NSURLRequest.requestWithURL(nsUrl))
     }
   }
