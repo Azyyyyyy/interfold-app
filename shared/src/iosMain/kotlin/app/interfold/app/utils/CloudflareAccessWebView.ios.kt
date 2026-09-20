@@ -9,7 +9,7 @@ import platform.Foundation.NSURL
 import platform.Foundation.NSURLRequest
 import platform.UIKit.UIApplication
 import platform.UIKit.UIBarButtonItem
-import platform.UIKit.UIBarButtonItemStyle
+import platform.UIKit.UIBarButtonSystemItemDone
 import platform.UIKit.UIColor
 import platform.UIKit.UIModalPresentationFullScreen
 import platform.UIKit.UINavigationController
@@ -63,11 +63,9 @@ internal fun presentCloudflareAccessWebView(
   } else {
     val nav = UINavigationController(rootViewController = hostVc)
     root.presentViewController(nav, animated = true) {
-      // Prefer the nav bar's top item — UIViewController.navigationItem is not
-      // reliably exposed on all Kotlin/Native UIKit binding versions used in CI.
+      // Nav top item avoids UIViewController.navigationItem, which is missing in some KN UIKit bindings.
       nav.navigationBar.topItem?.rightBarButtonItem = UIBarButtonItem(
-        title = "Done",
-        style = UIBarButtonItemStyle.Done,
+        barButtonSystemItem = UIBarButtonSystemItemDone,
         target = hostVc,
         action = NSSelectorFromString("onDoneTapped"),
       )
