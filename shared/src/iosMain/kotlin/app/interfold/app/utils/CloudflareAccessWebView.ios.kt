@@ -3,16 +3,11 @@ package app.interfold.app.utils
 import app.interfold.app.api.CloudflareAccessCredentials
 import app.interfold.app.api.extractCfAuthorizationCookie
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.ObjCAction
-import platform.Foundation.NSSelectorFromString
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLRequest
 import platform.UIKit.UIApplication
-import platform.UIKit.UIBarButtonItem
-import platform.UIKit.UIBarButtonSystemItemDone
 import platform.UIKit.UIColor
 import platform.UIKit.UIModalPresentationFullScreen
-import platform.UIKit.UINavigationController
 import platform.UIKit.UIViewAutoresizingFlexibleHeight
 import platform.UIKit.UIViewAutoresizingFlexibleWidth
 import platform.UIKit.UIViewController
@@ -23,6 +18,12 @@ import platform.WebKit.WKNavigationDelegateProtocol
 import platform.WebKit.WKWebView
 import platform.WebKit.WKWebViewConfiguration
 
+/**
+ * Presents an in-app WKWebView for Cloudflare Access.
+ *
+ * Interactive mode is swipe-to-dismiss (no UIBarButtonItem): Kotlin/Native UIKit
+ * bindings on CI omit Done/Plain system-item and style constants.
+ */
 @OptIn(ExperimentalForeignApi::class)
 internal fun presentCloudflareAccessWebView(
   url: String,
@@ -61,14 +62,7 @@ internal fun presentCloudflareAccessWebView(
       hostVc.load(NSURLRequest.requestWithURL(nsUrl))
     }
   } else {
-    val nav = UINavigationController(rootViewController = hostVc)
-    root.presentViewController(nav, animated = true) {
-      // Nav top item avoids UIViewController.navigationItem, which is missing in some KN UIKit bindings.
-      nav.navigationBar.topItem?.rightBarButtonItem = UIBarButtonItem(
-        barButtonSystemItem = UIBarButtonSystemItemDone,
-        target = hostVc,
-        action = NSSelectorFromString("onDoneTapped"),
-      )
+    root.presentViewController(hostVc, animated = true) {
       hostVc.load(NSURLRequest.requestWithURL(nsUrl))
     }
   }
@@ -96,13 +90,18 @@ private class CloudflareAccessHostController(
   }
 
   fun load(request: NSURLRequest) {
-    viewDidLoad()
+    // Touching `view` forces loadView/viewDidLoad before the first request.
+    view
     webView?.loadRequest(request)
   }
 
-  @ObjCAction
-  fun onDoneTapped() {
-    captureCookies(finishAfter = true, cancel = true)
+  override fun viewDidDisappear(animated: Boolean) {
+    super.viewDidDisappear(animated)
+    if (!completed) {
+      completed = true
+      onFailed("Cancelled")
+      onFinished()
+    }
   }
 
   private fun captureCookies(finishAfter: Boolean, cancel: Boolean = false) {
