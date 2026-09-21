@@ -199,12 +199,12 @@ jobs:
     timeout-minutes: 40
     permissions:
       contents: read
-    # Incremental native comes from gradle.properties (true). The old
-    # CI override (false) existed because KN asserted on
-    # ReturnsInsertion / [Enums] when iosSimulatorArm64 Debug compiled
-    # twice. Phase 1 left a single Gradle graph; Phase 2 retries
-    # incremental. Restore ORG_GRADLE_PROJECT_kotlin.incremental.native=false
-    # on this job if that assertion returns.
+    # gradle.properties has kotlin.incremental.native=true for local
+    # Xcode. CI stays false: Phase 2 (fd84636, run 35647100803) was
+    # green but the cold Gradle graph went 6m 32s → 9m 24s. Covers
+    # dummy-framework Gradle too if OVERRIDE ever fails.
+    env:
+      ORG_GRADLE_PROJECT_kotlin.incremental.native: "false"
 
     steps:
       - name: Checkout
@@ -287,6 +287,7 @@ jobs:
             -Pkotlin.native.cocoapods.platform=iphonesimulator \
             -Pkotlin.native.cocoapods.archs=arm64 \
             -Pkotlin.native.cocoapods.configuration=Debug \
+            -Pkotlin.incremental.native=false \
             --stacktrace
 
       # Simulator-only (no archive/sign). ARCHS=arm64 avoids a fat
