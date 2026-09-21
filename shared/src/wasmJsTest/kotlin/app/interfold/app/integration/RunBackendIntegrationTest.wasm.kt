@@ -8,6 +8,10 @@ internal fun runBackendIntegrationTest(
   timeout: Duration,
   block: suspend (baseUrl: String) -> Unit,
 ) {
+  // Returning without running the body would count as a pass. karma.config.d
+  // wraps Mocha's it() and calls this.skip() when no URL is injected, so
+  // Gradle records these as skipped; this early return only avoids hitting
+  // the network if that wrap races the test body.
   val url = wasmBackendUrlOrSkip() ?: return
   runTest(timeout = timeout) { block(url) }
 }

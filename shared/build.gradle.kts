@@ -265,9 +265,8 @@ kotlin {
       // compiled directly into this source set (not via dependsOn). An
       // intermediate source set that dependsOn(commonMain) makes Kotlin/Wasm
       // treat PlatformUtilities in test actuals as a different type from the
-      // expect. Skip TestHttpClient.kt — wasm supplies ordinary factories.
+      // expect. HTTP clients are ordinary platform functions, not expect/actual.
       kotlin.srcDir("src/commonIntegrationTest/kotlin")
-      kotlin.exclude("**/integration/TestHttpClient.kt")
       dependencies {
         implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
         implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
@@ -325,7 +324,6 @@ kotlin {
       // already arranges visibility/classpath for us. Shared helpers are compiled
       // into this source set via srcDir (same reason as wasmJsTest).
       kotlin.srcDir("src/commonIntegrationTest/kotlin")
-      kotlin.exclude("**/integration/TestHttpClient.kt")
       dependencies {
         implementation(kotlin("test"))
         implementation("org.jetbrains.kotlin:kotlin-test-junit5")
@@ -631,7 +629,13 @@ tasks.matching { it.name.contains("wasmJs") && it.name.contains("Test") }.config
   val karmaUrlOut = rootProject.layout.buildDirectory
     .file("wasm/packages/InterfoldApp-shared-test/backend-url.txt")
   if (name.contains("Webpack", ignoreCase = true) || name.contains("CompileSync", ignoreCase = true)) {
-    inputs.file(urlIn).optional()
+    // Gradle 9 rejects `inputs.file()` when the path is missing, even with
+    // `.optional()`. `files` + `skipWhenEmpty` lets unit tests run without a
+    // backend, and still invalidates webpack when the IT ready-file appears.
+    inputs.files(urlIn)
+      .withPropertyName("wasmBackendUrl")
+      .optional()
+      .skipWhenEmpty()
   }
   doFirst {
     val src = urlIn.get().asFile

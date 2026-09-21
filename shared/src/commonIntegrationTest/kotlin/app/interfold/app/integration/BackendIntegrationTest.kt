@@ -7,7 +7,8 @@ import kotlin.time.Duration.Companion.seconds
  * Live HTTP/WS tests against an in-memory Interfold backend. The scenarios live
  * here once; each platform supplies [runBackendIntegrationTest]:
  *  - desktop starts Testcontainers and [kotlinx.coroutines.runBlocking]
- *  - wasm uses a Gradle-injected URL/token (or no-ops on a plain browser unit run)
+ *  - wasm uses a Gradle-injected URL/token. On a plain `:shared:wasmJsBrowserTest`
+ *    run (no URL) the methods are reported as skipped, not passed.
  */
 class BackendIntegrationTest {
 

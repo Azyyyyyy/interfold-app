@@ -17,8 +17,6 @@ function readReady(name) {
     process.env["INTERFOLD_" + name] ||
     readUrlFile(path.resolve(__dirname, name.toLowerCase().split("_").join("-") + ".txt")) ||
     readUrlFile(process.env["INTERFOLD_" + name + "_FILE"] || "") ||
-    readUrlFile(path.resolve(process.cwd(), "build/wasm-it/" + name.toLowerCase().split("_").join("-") + ".txt")) ||
-    readUrlFile(path.resolve(__dirname, "../../../../shared/build/wasm-it/" + name.toLowerCase().split("_").join("-") + ".txt")) ||
     ""
   );
 }
