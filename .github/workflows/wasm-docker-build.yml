@@ -10,6 +10,13 @@ on:
       - main
       - develop
 
+# PRs share a group so a new push cancels the previous macOS ios-test
+# (~20 min) rather than queueing behind it. Pushes to main/develop keep
+# the in-flight Docker publish; cancel-in-progress is PR-only.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   android-test:
     name: shared :connectedAndroidDeviceTest
@@ -182,14 +189,22 @@ jobs:
   # iOS compile + commonTest. Mirrors mobile-release.yml but stops at
   # `xcodebuild build`. macos-26 for iOS 26 SDK; cache keys match the
   # release workflow so PR runs warm ~/.konan and CocoaPods.
+  #
+  # One Gradle graph after pod install (`syncFramework` + tests) so
+  # Kotlin/Native compiles iosSimulatorArm64 once. A second Gradle
+  # invocation re-runs compile/link: CocoaPods podBuild* tasks are not
+  # up-to-date-safe and dirty KN inputs. xcodebuild skips the pod
+  # Gradle hook via OVERRIDE.
   ios-test:
     name: shared :iosSimulatorArm64Test + xcodebuild build
     runs-on: macos-26
     timeout-minutes: 40
     permissions:
       contents: read
-    # Covers nested xcodebuild Gradle too. KN incremental asserts on
-    # iosSimulatorArm64 Debug (Lowering ReturnsInsertion / [Enums]).
+    # gradle.properties has kotlin.incremental.native=true for local
+    # Xcode. CI stays false: Phase 2 (fd84636, run 35647100803) was
+    # green but the cold Gradle graph went 6m 32s → 9m 24s. Covers
+    # dummy-framework Gradle too if OVERRIDE ever fails.
     env:
       ORG_GRADLE_PROJECT_kotlin.incremental.native: "false"
 
@@ -256,12 +271,34 @@ jobs:
             pod install --repo-update
           fi
 
-      # Kotlin/Native test klib + binary. Fail-fast before xcodebuild / sim.
-      - name: Compile iOS simulator tests
-        run: ./gradlew :shared:compileTestKotlinIosSimulatorArm64 :shared:linkDebugTestIosSimulatorArm64 -Pkotlin.incremental.native=false --stacktrace
+      # One Gradle graph: CocoaPods framework + simulator tests share
+      # compileKotlinIosSimulatorArm64. -P flags are what the Kotlin
+      # CocoaPods plugin reads; PLATFORM_NAME / ARCHS / CONFIGURATION
+      # env vars are what Compose's syncPodComposeResourcesForIos reads
+      # (xcodeTargetArchs). Both are set by Xcode when the podspec
+      # script runs; we have to supply them here because this step
+      # is outside xcodebuild. Keep tests in this same invocation —
+      # a follow-up `iosSimulatorArm64Test` Gradle run re-executes
+      # compile/link (podBuildSDWebImage dirties KN inputs).
+      - name: Gradle syncFramework + iosSimulatorArm64Test
+        env:
+          PLATFORM_NAME: iphonesimulator
+          ARCHS: arm64
+          CONFIGURATION: Debug
+        run: |
+          set -euo pipefail
+          ./gradlew :shared:syncFramework :shared:iosSimulatorArm64Test \
+            -Pkotlin.native.cocoapods.platform=iphonesimulator \
+            -Pkotlin.native.cocoapods.archs=arm64 \
+            -Pkotlin.native.cocoapods.configuration=Debug \
+            -Pkotlin.incremental.native=false \
+            --stacktrace
 
       # Simulator-only (no archive/sign). ARCHS=arm64 avoids a fat
       # arm64+x86_64 slice that Compose rejects (no iosX64 target).
+      # OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES makes the podspec's
+      # "Build shared" script exit before launching Gradle — the
+      # framework is already at shared/build/cocoapods/framework/.
       - name: xcodebuild build (Simulator)
         run: |
           set -euo pipefail
@@ -273,14 +310,12 @@ jobs:
             -destination "generic/platform=iOS Simulator" \
             ARCHS=arm64 \
             ONLY_ACTIVE_ARCH=YES \
+            OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGN_ENTITLEMENTS="" \
             DEVELOPMENT_TEAM=""
-
-      - name: Run :shared:iosSimulatorArm64Test
-        run: ./gradlew :shared:iosSimulatorArm64Test -Pkotlin.incremental.native=false --stacktrace
 
       - name: Upload test reports
         if: always()
