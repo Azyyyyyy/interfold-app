@@ -269,10 +269,17 @@ jobs:
           fi
 
       # One Gradle graph: CocoaPods framework + simulator tests share
-      # compileKotlinIosSimulatorArm64. Properties match the podspec's
-      # syncFramework invocation ($PLATFORM_NAME / $ARCHS / $CONFIGURATION
-      # for a Debug iphonesimulator arm64 xcodebuild).
+      # compileKotlinIosSimulatorArm64. -P flags are what the Kotlin
+      # CocoaPods plugin reads; PLATFORM_NAME / ARCHS / CONFIGURATION
+      # env vars are what Compose's syncPodComposeResourcesForIos reads
+      # (xcodeTargetArchs). Both are set by Xcode when the podspec
+      # script runs; we have to supply them here because this step
+      # is outside xcodebuild.
       - name: Gradle syncFramework + iosSimulatorArm64Test
+        env:
+          PLATFORM_NAME: iphonesimulator
+          ARCHS: arm64
+          CONFIGURATION: Debug
         run: |
           set -euo pipefail
           ./gradlew :shared:syncFramework :shared:iosSimulatorArm64Test \
