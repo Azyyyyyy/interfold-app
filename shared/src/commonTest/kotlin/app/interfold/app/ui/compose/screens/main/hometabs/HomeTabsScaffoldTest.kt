@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
@@ -23,13 +24,12 @@ import app.interfold.app.ui.compose.NavigationType
 import app.interfold.app.ui.compose.theme.LocalInterShapes
 import app.interfold.app.ui.compose.theme.LocalInterTypography
 import com.arkivanov.decompose.extensions.compose.subscribeAsState
-import kotlinx.coroutines.runBlocking
 import interfoldapp.shared.resources.Res
 import interfoldapp.shared.resources.alters
 import interfoldapp.shared.resources.friends
 import interfoldapp.shared.resources.history
 import interfoldapp.shared.resources.journal
-import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.stringResource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -66,40 +66,40 @@ class HomeTabsScaffoldTest {
   fun bottomBar_rendersAllFourTabs_whenMultiSystem() = runComposeUiTest {
     val fake = newFake(activeChild = FakeHomeTabsComponent.ActiveChild.Alters)
 
-    setContent { TestHomeTabsHost { TestBottomBar(fake) } }
+    val titles = setHomeTabsContent { TestBottomBar(fake) }
 
     onNodeWithTag(HomeTabsTestTags.BOTTOM_BAR).assertExists()
-    tab(tabTitles.alters).assertExists()
-    tab(tabTitles.history).assertExists()
-    tab(tabTitles.journal).assertExists()
-    tab(tabTitles.friends).assertExists()
+    tab(titles.alters).assertExists()
+    tab(titles.history).assertExists()
+    tab(titles.journal).assertExists()
+    tab(titles.friends).assertExists()
   }
 
   @Test
   fun bottomBar_marksAltersSelected_whenCurrentScreenIsAltersChild() = runComposeUiTest {
     val fake = newFake(activeChild = FakeHomeTabsComponent.ActiveChild.Alters)
 
-    setContent { TestHomeTabsHost { TestBottomBar(fake) } }
+    val titles = setHomeTabsContent { TestBottomBar(fake) }
 
-    tab(tabTitles.alters).assertIsSelected()
+    tab(titles.alters).assertIsSelected()
   }
 
   @Test
   fun bottomBar_marksFriendsSelected_whenCurrentScreenIsFriendsChild() = runComposeUiTest {
     val fake = newFake(activeChild = FakeHomeTabsComponent.ActiveChild.Friends)
 
-    setContent { TestHomeTabsHost { TestBottomBar(fake) } }
+    val titles = setHomeTabsContent { TestBottomBar(fake) }
 
-    tab(tabTitles.friends).assertIsSelected()
+    tab(titles.friends).assertIsSelected()
   }
 
   @Test
   fun bottomBar_tappingNonSelectedTab_invokesNavigate() = runComposeUiTest {
     val fake = newFake(activeChild = FakeHomeTabsComponent.ActiveChild.Alters)
 
-    setContent { TestHomeTabsHost { TestBottomBar(fake) } }
+    val titles = setHomeTabsContent { TestBottomBar(fake) }
 
-    tab(tabTitles.journal).performClick()
+    tab(titles.journal).performClick()
 
     assertEquals(1, fake.navigateToJournalCalls)
     assertEquals(0, fake.navigateToAltersCalls)
@@ -111,9 +111,9 @@ class HomeTabsScaffoldTest {
   fun bottomBar_tappingSelectedTab_doesNotInvokeNavigate() = runComposeUiTest {
     val fake = newFake(activeChild = FakeHomeTabsComponent.ActiveChild.Alters)
 
-    setContent { TestHomeTabsHost { TestBottomBar(fake) } }
+    val titles = setHomeTabsContent { TestBottomBar(fake) }
 
-    tab(tabTitles.alters).performClick()
+    tab(titles.alters).performClick()
 
     assertEquals(0, fake.navigateToAltersCalls)
   }
@@ -124,31 +124,31 @@ class HomeTabsScaffoldTest {
   fun navigationRail_rendersAllFourTabs_whenMultiSystem() = runComposeUiTest {
     val fake = newFake(activeChild = FakeHomeTabsComponent.ActiveChild.Alters)
 
-    setContent { TestHomeTabsHost { TestNavigationRail(fake) } }
+    val titles = setHomeTabsContent { TestNavigationRail(fake) }
 
     onNodeWithTag(HomeTabsTestTags.NAVIGATION_RAIL).assertExists()
-    tab(tabTitles.alters).assertExists()
-    tab(tabTitles.history).assertExists()
-    tab(tabTitles.journal).assertExists()
-    tab(tabTitles.friends).assertExists()
+    tab(titles.alters).assertExists()
+    tab(titles.history).assertExists()
+    tab(titles.journal).assertExists()
+    tab(titles.friends).assertExists()
   }
 
   @Test
   fun navigationRail_marksHistorySelected_whenCurrentScreenIsFrontHistoryChild() = runComposeUiTest {
     val fake = newFake(activeChild = FakeHomeTabsComponent.ActiveChild.History)
 
-    setContent { TestHomeTabsHost { TestNavigationRail(fake) } }
+    val titles = setHomeTabsContent { TestNavigationRail(fake) }
 
-    tab(tabTitles.history).assertIsSelected()
+    tab(titles.history).assertIsSelected()
   }
 
   @Test
   fun navigationRail_tappingNonSelectedTab_invokesNavigate() = runComposeUiTest {
     val fake = newFake(activeChild = FakeHomeTabsComponent.ActiveChild.Alters)
 
-    setContent { TestHomeTabsHost { TestNavigationRail(fake) } }
+    val titles = setHomeTabsContent { TestNavigationRail(fake) }
 
-    tab(tabTitles.friends).performClick()
+    tab(titles.friends).performClick()
 
     assertEquals(1, fake.navigateToFriendsCalls)
     assertEquals(0, fake.navigateToAltersCalls)
@@ -158,9 +158,9 @@ class HomeTabsScaffoldTest {
   fun navigationRail_tappingSelectedTab_doesNotInvokeNavigate() = runComposeUiTest {
     val fake = newFake(activeChild = FakeHomeTabsComponent.ActiveChild.Journal)
 
-    setContent { TestHomeTabsHost { TestNavigationRail(fake) } }
+    val titles = setHomeTabsContent { TestNavigationRail(fake) }
 
-    tab(tabTitles.journal).performClick()
+    tab(titles.journal).performClick()
 
     assertEquals(0, fake.navigateToJournalCalls)
   }
@@ -178,9 +178,9 @@ class HomeTabsScaffoldTest {
       activeChild = FakeHomeTabsComponent.ActiveChild.Alters
     )
 
-    setContent { TestHomeTabsHost { TestBottomBar(fake) } }
+    val titles = setHomeTabsContent { TestBottomBar(fake) }
 
-    tab(tabTitles.alters).assertIsSelected()
+    tab(titles.alters).assertIsSelected()
   }
 
   @Test
@@ -190,9 +190,9 @@ class HomeTabsScaffoldTest {
       activeChild = FakeHomeTabsComponent.ActiveChild.Friends
     )
 
-    setContent { TestHomeTabsHost { TestBottomBar(fake) } }
+    val titles = setHomeTabsContent { TestBottomBar(fake) }
 
-    tab(tabTitles.friends).assertIsSelected()
+    tab(titles.friends).assertIsSelected()
   }
 
   // -------- Full HomeTabsScreen composition --------------------------------------
@@ -209,10 +209,10 @@ class HomeTabsScaffoldTest {
       activeChild = FakeHomeTabsComponent.ActiveChild.Alters
     )
 
-    setContent { TestHomeTabsHost { TestHomeTabsScreen(fake, NavigationType.BOTTOM_BAR) } }
+    val titles = setHomeTabsContent { TestHomeTabsScreen(fake, NavigationType.BOTTOM_BAR) }
 
     onNodeWithTag(HomeTabsTestTags.BOTTOM_BAR).assertExists()
-    tab(tabTitles.alters).assertIsSelected()
+    tab(titles.alters).assertIsSelected()
   }
 
   @Test
@@ -222,10 +222,10 @@ class HomeTabsScaffoldTest {
       activeChild = FakeHomeTabsComponent.ActiveChild.Alters
     )
 
-    setContent { TestHomeTabsHost { TestHomeTabsScreen(fake, NavigationType.RAIL) } }
+    val titles = setHomeTabsContent { TestHomeTabsScreen(fake, NavigationType.RAIL) }
 
     onNodeWithTag(HomeTabsTestTags.NAVIGATION_RAIL).assertExists()
-    tab(tabTitles.alters).assertIsSelected()
+    tab(titles.alters).assertIsSelected()
   }
 
   @Test
@@ -238,7 +238,7 @@ class HomeTabsScaffoldTest {
     // Singlet systems should see neither bar regardless of which navigation type
     // the host would normally use, so pick BOTTOM_BAR (the mobile default) and
     // assert both the bottom bar and the navigation rail tags are absent.
-    setContent { TestHomeTabsHost { TestHomeTabsScreen(fake, NavigationType.BOTTOM_BAR) } }
+    setHomeTabsContent { TestHomeTabsScreen(fake, NavigationType.BOTTOM_BAR) }
 
     onNodeWithTag(HomeTabsTestTags.BOTTOM_BAR).assertDoesNotExist()
     onNodeWithTag(HomeTabsTestTags.NAVIGATION_RAIL).assertDoesNotExist()
@@ -248,11 +248,9 @@ class HomeTabsScaffoldTest {
 // -------- Test helpers ------------------------------------------------------------
 
 /**
- * Captured visible labels for the four tabs, resolved once via the non-composable
- * `getString` so tests always reference what the *current locale* displays rather
- * than hardcoded English literals. Resolution is suspending, so we cross the
- * boundary with [runBlocking] in a top-level `lazy` — the test process only does
- * this once.
+ * Captured visible labels for the four tabs, resolved via [stringResource]
+ * inside composition. A top-level `runBlocking { getString(...) }` deadlocks
+ * on Kotlin/Wasm because resource loads are async on the same event loop.
  */
 private data class TabTitles(
   val alters: String,
@@ -261,15 +259,19 @@ private data class TabTitles(
   val friends: String,
 )
 
-private val tabTitles: TabTitles by lazy {
-  runBlocking {
-    TabTitles(
-      alters = getString(Res.string.alters),
-      history = getString(Res.string.history),
-      journal = getString(Res.string.journal),
-      friends = getString(Res.string.friends),
+@OptIn(ExperimentalTestApi::class)
+private fun ComposeUiTest.setHomeTabsContent(content: @Composable () -> Unit): TabTitles {
+  var titles: TabTitles? = null
+  setContent {
+    titles = TabTitles(
+      alters = stringResource(Res.string.alters),
+      history = stringResource(Res.string.history),
+      journal = stringResource(Res.string.journal),
+      friends = stringResource(Res.string.friends),
     )
+    TestHomeTabsHost(content)
   }
+  return requireNotNull(titles)
 }
 
 /**
@@ -353,8 +355,8 @@ private fun TestNavigationRail(fake: FakeHomeTabsComponent) {
  * providing [LocalNavigationType] (which the screen reads from the parent in
  * production via `MainAppScreen`) and an empty `renderChild` so we don't need
  * real tab screens. The public `HomeTabsScreen` doesn't expose `renderChild`
- * — the `internal` content overload does, and that's what `commonTest`
- * reaches for here. `HomeTabsScreenContent` provides `LocalFABIsCollapsed`
+ * — the `internal` content overload does, and that's what these tests
+ * reach for here. `HomeTabsScreenContent` provides `LocalFABIsCollapsed`
  * and `LocalUpdateLazyListState` itself, so nothing else has to be wired.
  */
 @Composable

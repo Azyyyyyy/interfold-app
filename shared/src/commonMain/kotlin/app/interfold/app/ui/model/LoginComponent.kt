@@ -82,15 +82,18 @@ internal class LoginComponentImpl(
   componentContext: CommonComponentContext
 ) : LoginComponent, CommonComponentContext by componentContext {
   private val handler = retainStateHandler { LoginComponent.Model(serverUrl = settings.data.value.apiEndpoint) }
+  override val model = handler.model
+
+  // Must precede `init`: fetchLoginMethods() uses these, and Kotlin runs init in
+  // source order. Declaring them below left `scope` null and WASM `_start` trapped.
+  private val scope = coroutineScope(coroutineContext + SupervisorJob())
+  private var healthCheckJob: Job? = null
+  private var loginMethodsJob: Job? = null
+
   init {
     registerStateHandler(handler)
     fetchLoginMethods()
   }
-  override val model = handler.model
-
-  private val scope = coroutineScope(coroutineContext + SupervisorJob())
-  private var healthCheckJob: Job? = null
-  private var loginMethodsJob: Job? = null
 
   override fun logInWithGoogle(colorSchemeParams: ColorSchemeParams) = logInWithProvider("google", colorSchemeParams)
   override fun logInWithDiscord(colorSchemeParams: ColorSchemeParams) = logInWithProvider("discord", colorSchemeParams)

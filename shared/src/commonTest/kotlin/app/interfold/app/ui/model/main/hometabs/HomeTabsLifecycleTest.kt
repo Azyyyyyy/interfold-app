@@ -6,7 +6,7 @@ import app.interfold.app.ui.compose.screens.main.hometabs.FakeSettingsInterface
 import app.interfold.app.ui.model.CommonComponentContextImpl
 import app.interfold.app.ui.model.MainComponentContextImpl
 import app.interfold.app.ui.model.interfaces.ApiInterfaceImpl
-import app.interfold.app.utils.FailingPlatformUtilities
+import app.interfold.app.utils.failingPlatformUtilities
 import com.arkivanov.decompose.DefaultComponentContext
 import com.arkivanov.decompose.router.stack.StackNavigation
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
@@ -82,7 +82,7 @@ class HomeTabsLifecycleTest {
     val apiScope = CoroutineScope(Dispatchers.Unconfined + SupervisorJob())
     val api = ApiInterfaceImpl(
       coroutineScope = apiScope,
-      platformUtilities = FailingPlatformUtilities(),
+      platformUtilities = failingPlatformUtilities(),
       settingsInterface = FakeSettingsInterface(Settings(isSinglet = isSinglet)),
       socketSessionFactory = FakePhoenixSocketSessionFactory(),
     )

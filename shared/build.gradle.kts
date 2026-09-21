@@ -70,6 +70,16 @@ kotlin {
   iosArm64()
   iosSimulatorArm64()
 
+  wasmJs {
+    browser {
+      testTask {
+        useKarma {
+          useChromeHeadless()
+        }
+      }
+    }
+  }
+
   applyDefaultHierarchyTemplate()
 
   cocoapods {
@@ -112,8 +122,6 @@ kotlin {
 
   sourceSets {
     val ktorVersion = "3.4.0"
-
-    wasmJs { browser() }
 
     val commonMain by getting {
       println(extra)
@@ -252,6 +260,20 @@ kotlin {
       }
     }
 
+    val wasmJsTest by getting {
+      // Shared integration helpers live in src/commonIntegrationTest and are
+      // compiled directly into this source set (not via dependsOn). An
+      // intermediate source set that dependsOn(commonMain) makes Kotlin/Wasm
+      // treat PlatformUtilities in test actuals as a different type from the
+      // expect. Skip TestHttpClient.kt — wasm supplies ordinary factories.
+      kotlin.srcDir("src/commonIntegrationTest/kotlin")
+      kotlin.exclude("**/integration/TestHttpClient.kt")
+      dependencies {
+        implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
+        implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
+      }
+    }
+
     val desktopMain by getting {
       dependencies {
         implementation("io.ktor:ktor-client-okhttp:$ktorVersion")
@@ -263,16 +285,21 @@ kotlin {
     val commonTest by getting {
       dependencies {
         val composeVersion = findProperty("compose.version") as String
-        val material3Version = findProperty("compose.material3.version") as String
-
         implementation(kotlin("test"))
         implementation("org.jetbrains.compose.ui:ui-test:$composeVersion")
-        implementation("org.jetbrains.compose.material3:material3:$material3Version")
         implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
       }
     }
 
+    // Kotlin classes that implement Decompose ChildPanels interfaces ICE the
+    // wasm FIR-to-IR fake-override builder. nonWasmTest holds those throwing
+    // stubs; wasmJsTest uses unsafeCast JS objects instead (see StubTabComponents).
+    val iosTest by getting {
+      kotlin.srcDir("src/nonWasmTest/kotlin")
+    }
+
     val androidDeviceTest by getting {
+      kotlin.srcDir("src/nonWasmTest/kotlin")
       dependencies {
         val composeVersion = findProperty("compose.version") as String
 
@@ -282,7 +309,11 @@ kotlin {
       }
     }
 
+    findByName("androidUnitTest")?.kotlin?.srcDir("src/nonWasmTest/kotlin")
+    findByName("androidHostTest")?.kotlin?.srcDir("src/nonWasmTest/kotlin")
+
     val desktopTest by getting {
+      kotlin.srcDir("src/nonWasmTest/kotlin")
       dependencies {
         implementation(compose.desktop.uiTestJUnit4)
         implementation(compose.desktop.currentOs)
@@ -291,10 +322,13 @@ kotlin {
 
     val desktopIntegrationTest by getting {
       // No explicit dependsOn(desktopMain): the JVM compilation's `associateWith(main)`
-      // already arranges visibility/classpath for us. Setting `dependsOn` here would
-      // double-link the source set and trigger a KGP warning.
+      // already arranges visibility/classpath for us. Shared helpers are compiled
+      // into this source set via srcDir (same reason as wasmJsTest).
+      kotlin.srcDir("src/commonIntegrationTest/kotlin")
+      kotlin.exclude("**/integration/TestHttpClient.kt")
       dependencies {
         implementation(kotlin("test"))
+        implementation("org.jetbrains.kotlin:kotlin-test-junit5")
         implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
         implementation("io.ktor:ktor-client-okhttp:$ktorVersion")
         implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
@@ -460,6 +494,175 @@ tasks.register<Test>("desktopIntegrationTest") {
     showStandardStreams = true
     exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
   }
+}
+
+// ---------------------------------------------------------------------------
+// Kotlin/Wasm browser tests (Karma + Chrome Headless)
+// ---------------------------------------------------------------------------
+// Unit tests: `:shared:wasmJsBrowserTest` (commonTest + wasmJsTest).
+// Integration tests live in the same compilation so they exercise the real
+// ktor-js + Phoenix wasm path; they no-op unless a backend URL is injected.
+// `:shared:wasmJsBrowserIntegrationTest` starts the in-memory backend on a
+// matching host/container port (so Phoenix's Host-header loopback works from
+// Chrome) then re-runs the browser tests with the URL baked in.
+val wasmItDir = layout.buildDirectory.dir("wasm-it")
+val wasmItUrlFile = layout.buildDirectory.file("wasm-it/backend-url.txt")
+val wasmItPidFile = layout.buildDirectory.file("wasm-it/backend.pid")
+val wasmItLogFile = layout.buildDirectory.file("wasm-it/backend.log")
+val wasmItPort = "18080"
+val wasmItRuntimeClasspath = objects.fileCollection().from(
+  integrationCompilation.runtimeDependencyFiles,
+  integrationCompilation.output.allOutputs,
+)
+
+val startWasmIntegrationBackend = tasks.register("startWasmIntegrationBackend") {
+  group = "verification"
+  description = "Starts the in-memory Interfold backend on localhost:$wasmItPort for wasm browser integration tests."
+  notCompatibleWithConfigurationCache("Spawns a long-lived Testcontainers backend process")
+  dependsOn(integrationCompilation.compileTaskProvider)
+  val urlOut = wasmItUrlFile
+  val pidOut = wasmItPidFile
+  val logOut = wasmItLogFile
+  val dirOut = wasmItDir
+  val argsOut = layout.buildDirectory.file("wasm-it/java-args.txt")
+  val port = wasmItPort
+  val runtimeCp = wasmItRuntimeClasspath
+  val workDir = layout.projectDirectory.asFile
+  inputs.files(runtimeCp)
+  outputs.file(urlOut)
+  doLast {
+    val urlFile = urlOut.get().asFile
+    val pidFile = pidOut.get().asFile
+    val logFile = logOut.get().asFile
+    if (pidFile.exists()) {
+      val oldPid = pidFile.readText().trim().toLongOrNull()
+      pidFile.delete()
+      if (oldPid != null) {
+        try {
+          ProcessHandle.of(oldPid).ifPresent { handle ->
+            handle.descendants().forEach { child -> child.destroy() }
+            handle.destroy()
+            val waitUntil = System.currentTimeMillis() + 15_000
+            while (handle.isAlive && System.currentTimeMillis() < waitUntil) {
+              Thread.sleep(100)
+            }
+          }
+        } catch (_: Exception) {
+        }
+      }
+    }
+    dirOut.get().asFile.mkdirs()
+    urlFile.delete()
+    val javaBin = File(
+      System.getProperty("java.home"),
+      if (File.separatorChar == '\\') "bin\\java.exe" else "bin/java",
+    ).absolutePath
+    // Windows CreateProcess has a ~32k command-line cap; a KMP+Testcontainers
+    // classpath blows past it. Java argument files keep the argv short.
+    val cp = runtimeCp.files.joinToString(File.pathSeparator) {
+      it.absolutePath.replace('\\', '/')
+    }
+    val argsFile = argsOut.get().asFile
+    argsFile.writeText(
+      buildString {
+        appendLine("-Dinterfold.backend.port=$port")
+        appendLine("-cp")
+        appendLine("\"$cp\"")
+        appendLine("app.interfold.app.integration.BackendEntryPointKt")
+        appendLine("\"${urlFile.absolutePath.replace('\\', '/')}\"")
+      }
+    )
+    val pb = ProcessBuilder(javaBin, "@${argsFile.absolutePath.replace('\\', '/')}")
+    pb.redirectErrorStream(true)
+    pb.redirectOutput(logFile)
+    pb.directory(workDir)
+    val process = pb.start()
+    pidFile.writeText(process.pid().toString())
+    val deadline = System.currentTimeMillis() + 120_000
+    while (System.currentTimeMillis() < deadline) {
+      if (!process.isAlive) {
+        val log = if (logFile.exists()) logFile.readText() else "(no log)"
+        error("Wasm integration backend exited before becoming ready.\n$log")
+      }
+      if (urlFile.exists() && urlFile.readText().isNotBlank()) {
+        logger.lifecycle("[wasm-it] backend ready at {}", urlFile.readText().trim())
+        return@doLast
+      }
+      Thread.sleep(250)
+    }
+    process.destroy()
+    error("Timed out waiting for wasm integration backend on port $port")
+  }
+}
+
+val stopWasmIntegrationBackend = tasks.register("stopWasmIntegrationBackend") {
+  group = "verification"
+  description = "Stops the backend started by startWasmIntegrationBackend."
+  notCompatibleWithConfigurationCache("Stops a long-lived Testcontainers backend process")
+  val pidOut = wasmItPidFile
+  val urlOut = wasmItUrlFile
+  doLast {
+    val pidFile = pidOut.get().asFile
+    val urlFile = urlOut.get().asFile
+    if (pidFile.exists()) {
+      val pid = pidFile.readText().trim().toLongOrNull()
+      pidFile.delete()
+      if (pid != null) {
+        try {
+          ProcessHandle.of(pid).ifPresent { handle ->
+            handle.descendants().forEach { child -> child.destroy() }
+            handle.destroy()
+            val waitUntil = System.currentTimeMillis() + 15_000
+            while (handle.isAlive && System.currentTimeMillis() < waitUntil) {
+              Thread.sleep(100)
+            }
+          }
+        } catch (_: Exception) {
+        }
+      }
+    }
+    if (urlFile.exists()) urlFile.delete()
+  }
+}
+
+tasks.matching { it.name.contains("wasmJs") && it.name.contains("Test") }.configureEach {
+  mustRunAfter(startWasmIntegrationBackend)
+  val urlIn = wasmItUrlFile
+  val karmaUrlOut = rootProject.layout.buildDirectory
+    .file("wasm/packages/InterfoldApp-shared-test/backend-url.txt")
+  if (name.contains("Webpack", ignoreCase = true) || name.contains("CompileSync", ignoreCase = true)) {
+    inputs.file(urlIn).optional()
+  }
+  doFirst {
+    val src = urlIn.get().asFile
+    if (src.exists()) {
+      val url = src.readText().trim()
+      if (url.isNotEmpty()) {
+        val destDir = karmaUrlOut.get().asFile.parentFile
+        destDir.mkdirs()
+        src.parentFile.listFiles()?.filter { it.name.startsWith("backend-") && it.extension == "txt" }
+          ?.forEach { it.copyTo(File(destDir, it.name), overwrite = true) }
+        if (this is org.gradle.process.ProcessForkOptions) {
+          environment("INTERFOLD_BACKEND_URL", url)
+          environment("INTERFOLD_REQUIRE_BACKEND", "1")
+          environment("INTERFOLD_BACKEND_URL_FILE", src.absolutePath)
+          val tokenFile = File(src.parentFile, "backend-token.txt")
+          if (tokenFile.exists()) {
+            environment("INTERFOLD_BACKEND_TOKEN", tokenFile.readText().trim())
+          }
+        }
+      }
+    }
+  }
+}
+
+tasks.register("wasmJsBrowserIntegrationTest") {
+  group = "verification"
+  description = "Starts the in-memory backend and runs :shared:wasmJsBrowserTest against it."
+  notCompatibleWithConfigurationCache("Depends on a long-lived Testcontainers backend process")
+  dependsOn(startWasmIntegrationBackend)
+  dependsOn("wasmJsBrowserTest")
+  finalizedBy(stopWasmIntegrationBackend)
 }
 
 // ---------------------------------------------------------------------------
