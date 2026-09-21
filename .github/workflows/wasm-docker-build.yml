@@ -37,12 +37,9 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
-      # Smoke-compile the test source set on the runner without an emulator.
-      # Fails fast on Gradle / source-set wiring issues before paying the
-      # ~5 min AVD boot. Task name comes from the new
-      # com.android.kotlin.multiplatform.library plugin (androidDeviceTest).
-      - name: Compile instrumented tests
-        run: ./gradlew :shared:compileAndroidDeviceTest --stacktrace
+      # APK only — no emulator yet. Fail-fast on source-set / AGP wiring.
+      - name: Assemble :shared:assembleAndroidDeviceTest
+        run: ./gradlew :shared:assembleAndroidDeviceTest --stacktrace
 
       - name: AVD cache
         id: avd-cache
@@ -110,6 +107,9 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
+      - name: Compile desktop tests
+        run: ./gradlew :shared:compileTestKotlinDesktop :shared:compileIntegrationTestKotlinDesktop --stacktrace
+
       - name: Run :shared:desktopTest
         run: ./gradlew :shared:desktopTest --stacktrace
 
@@ -153,6 +153,11 @@ jobs:
       - name: Set up Chrome
         id: chrome
         uses: browser-actions/setup-chrome@v2
+
+      # Kotlin + webpack of the Karma binary. Start the JVM backend later so
+      # this step stays compile-only.
+      - name: Compile wasm tests
+        run: ./gradlew :shared:wasmJsTestTestDevelopmentExecutableCompileSync :shared:compileIntegrationTestKotlinDesktop --stacktrace
 
       - name: Run :shared:wasmJsBrowserTest
         env:
@@ -251,10 +256,9 @@ jobs:
             pod install --repo-update
           fi
 
-      # Fail-fast before simulator boot. Flag matches the job env (KN
-      # incremental assertion on Debug/Test klibs).
+      # Kotlin/Native test klib + binary. Fail-fast before xcodebuild / sim.
       - name: Compile iOS simulator tests
-        run: ./gradlew :shared:compileTestKotlinIosSimulatorArm64 -Pkotlin.incremental.native=false --stacktrace
+        run: ./gradlew :shared:compileTestKotlinIosSimulatorArm64 :shared:linkDebugTestIosSimulatorArm64 -Pkotlin.incremental.native=false --stacktrace
 
       # Simulator-only (no archive/sign). ARCHS=arm64 avoids a fat
       # arm64+x86_64 slice that Compose rejects (no iosX64 target).
@@ -275,12 +279,6 @@ jobs:
             CODE_SIGN_ENTITLEMENTS="" \
             DEVELOPMENT_TEAM=""
 
-      # Direct KMP analog of :shared:connectedAndroidDeviceTest — same
-      # commonTest source set, compiled for iosSimulatorArm64, launched
-      # on a Kotlin/Native-managed simulator. Iterates the same test
-      # corpus across both mobile targets. Same -Pkotlin.incremental.native
-      # workaround as the smoke step; the linker (linkDebugTestIosSimulatorArm64)
-      # is what actually trips the [Enums] phase assertion.
       - name: Run :shared:iosSimulatorArm64Test
         run: ./gradlew :shared:iosSimulatorArm64Test -Pkotlin.incremental.native=false --stacktrace
 
