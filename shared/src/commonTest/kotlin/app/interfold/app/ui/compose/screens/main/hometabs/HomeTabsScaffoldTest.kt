@@ -13,8 +13,8 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.SemanticsNodeInteractionsProvider
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsSelected
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
@@ -24,12 +24,6 @@ import app.interfold.app.ui.compose.NavigationType
 import app.interfold.app.ui.compose.theme.LocalInterShapes
 import app.interfold.app.ui.compose.theme.LocalInterTypography
 import com.arkivanov.decompose.extensions.compose.subscribeAsState
-import interfoldapp.shared.resources.Res
-import interfoldapp.shared.resources.alters
-import interfoldapp.shared.resources.friends
-import interfoldapp.shared.resources.history
-import interfoldapp.shared.resources.journal
-import org.jetbrains.compose.resources.stringResource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -41,13 +35,13 @@ import kotlin.test.assertEquals
  * (which would render real tab bodies via `ChildStack`) so there's no need for
  * the inner tab components to do anything useful.
  *
- * Tab items are located via [Role.Tab] + the tab's visible text label (see the
- * `tab(...)` helper at the bottom of this file) — they carry no test tags in
- * production because Material's `NavigationBarItem` / `NavigationRailItem`
- * already expose role, label and selected state in the semantics tree. Only
- * the two bar containers themselves use [HomeTabsTestTags], because Material
- * exposes no distinguishing semantic on them. See the [HomeTabsTestTags]
- * KDoc for the rationale.
+ * Tab items are located via [Role.Tab] in production order (Alters, History,
+ * Journal, Friends) — they carry no test tags because Material already exposes
+ * role and selected state. Labels are not used as matchers: Compose resources
+ * never resolve in the wasm Karma runner (`stringResource` stays empty, so
+ * `hasText("")` matches every tab). Only the two bar containers use
+ * [HomeTabsTestTags], because Material exposes no distinguishing semantic on
+ * them. See the [HomeTabsTestTags] KDoc for the rationale.
  *
  * The eight cases below cover the four guarantees the bar contracts make:
  *  - all four tabs render when the system is not a singlet
@@ -66,40 +60,37 @@ class HomeTabsScaffoldTest {
   fun bottomBar_rendersAllFourTabs_whenMultiSystem() = runComposeUiTest {
     val fake = newFake(activeChild = FakeHomeTabsComponent.ActiveChild.Alters)
 
-    val titles = setHomeTabsContent { TestBottomBar(fake) }
+    setHomeTabsContent { TestBottomBar(fake) }
 
     onNodeWithTag(HomeTabsTestTags.BOTTOM_BAR).assertExists()
-    tab(titles.alters).assertExists()
-    tab(titles.history).assertExists()
-    tab(titles.journal).assertExists()
-    tab(titles.friends).assertExists()
+    onAllNodes(TabRoleMatcher).assertCountEquals(4)
   }
 
   @Test
   fun bottomBar_marksAltersSelected_whenCurrentScreenIsAltersChild() = runComposeUiTest {
     val fake = newFake(activeChild = FakeHomeTabsComponent.ActiveChild.Alters)
 
-    val titles = setHomeTabsContent { TestBottomBar(fake) }
+    setHomeTabsContent { TestBottomBar(fake) }
 
-    tab(titles.alters).assertIsSelected()
+    tab(TabSlot.Alters).assertIsSelected()
   }
 
   @Test
   fun bottomBar_marksFriendsSelected_whenCurrentScreenIsFriendsChild() = runComposeUiTest {
     val fake = newFake(activeChild = FakeHomeTabsComponent.ActiveChild.Friends)
 
-    val titles = setHomeTabsContent { TestBottomBar(fake) }
+    setHomeTabsContent { TestBottomBar(fake) }
 
-    tab(titles.friends).assertIsSelected()
+    tab(TabSlot.Friends).assertIsSelected()
   }
 
   @Test
   fun bottomBar_tappingNonSelectedTab_invokesNavigate() = runComposeUiTest {
     val fake = newFake(activeChild = FakeHomeTabsComponent.ActiveChild.Alters)
 
-    val titles = setHomeTabsContent { TestBottomBar(fake) }
+    setHomeTabsContent { TestBottomBar(fake) }
 
-    tab(titles.journal).performClick()
+    tab(TabSlot.Journal).performClick()
 
     assertEquals(1, fake.navigateToJournalCalls)
     assertEquals(0, fake.navigateToAltersCalls)
@@ -111,9 +102,9 @@ class HomeTabsScaffoldTest {
   fun bottomBar_tappingSelectedTab_doesNotInvokeNavigate() = runComposeUiTest {
     val fake = newFake(activeChild = FakeHomeTabsComponent.ActiveChild.Alters)
 
-    val titles = setHomeTabsContent { TestBottomBar(fake) }
+    setHomeTabsContent { TestBottomBar(fake) }
 
-    tab(titles.alters).performClick()
+    tab(TabSlot.Alters).performClick()
 
     assertEquals(0, fake.navigateToAltersCalls)
   }
@@ -124,31 +115,28 @@ class HomeTabsScaffoldTest {
   fun navigationRail_rendersAllFourTabs_whenMultiSystem() = runComposeUiTest {
     val fake = newFake(activeChild = FakeHomeTabsComponent.ActiveChild.Alters)
 
-    val titles = setHomeTabsContent { TestNavigationRail(fake) }
+    setHomeTabsContent { TestNavigationRail(fake) }
 
     onNodeWithTag(HomeTabsTestTags.NAVIGATION_RAIL).assertExists()
-    tab(titles.alters).assertExists()
-    tab(titles.history).assertExists()
-    tab(titles.journal).assertExists()
-    tab(titles.friends).assertExists()
+    onAllNodes(TabRoleMatcher).assertCountEquals(4)
   }
 
   @Test
   fun navigationRail_marksHistorySelected_whenCurrentScreenIsFrontHistoryChild() = runComposeUiTest {
     val fake = newFake(activeChild = FakeHomeTabsComponent.ActiveChild.History)
 
-    val titles = setHomeTabsContent { TestNavigationRail(fake) }
+    setHomeTabsContent { TestNavigationRail(fake) }
 
-    tab(titles.history).assertIsSelected()
+    tab(TabSlot.History).assertIsSelected()
   }
 
   @Test
   fun navigationRail_tappingNonSelectedTab_invokesNavigate() = runComposeUiTest {
     val fake = newFake(activeChild = FakeHomeTabsComponent.ActiveChild.Alters)
 
-    val titles = setHomeTabsContent { TestNavigationRail(fake) }
+    setHomeTabsContent { TestNavigationRail(fake) }
 
-    tab(titles.friends).performClick()
+    tab(TabSlot.Friends).performClick()
 
     assertEquals(1, fake.navigateToFriendsCalls)
     assertEquals(0, fake.navigateToAltersCalls)
@@ -158,9 +146,9 @@ class HomeTabsScaffoldTest {
   fun navigationRail_tappingSelectedTab_doesNotInvokeNavigate() = runComposeUiTest {
     val fake = newFake(activeChild = FakeHomeTabsComponent.ActiveChild.Journal)
 
-    val titles = setHomeTabsContent { TestNavigationRail(fake) }
+    setHomeTabsContent { TestNavigationRail(fake) }
 
-    tab(titles.journal).performClick()
+    tab(TabSlot.Journal).performClick()
 
     assertEquals(0, fake.navigateToJournalCalls)
   }
@@ -178,9 +166,9 @@ class HomeTabsScaffoldTest {
       activeChild = FakeHomeTabsComponent.ActiveChild.Alters
     )
 
-    val titles = setHomeTabsContent { TestBottomBar(fake) }
+    setHomeTabsContent { TestBottomBar(fake) }
 
-    tab(titles.alters).assertIsSelected()
+    tab(TabSlot.Alters).assertIsSelected()
   }
 
   @Test
@@ -190,9 +178,9 @@ class HomeTabsScaffoldTest {
       activeChild = FakeHomeTabsComponent.ActiveChild.Friends
     )
 
-    val titles = setHomeTabsContent { TestBottomBar(fake) }
+    setHomeTabsContent { TestBottomBar(fake) }
 
-    tab(titles.friends).assertIsSelected()
+    tab(TabSlot.Friends).assertIsSelected()
   }
 
   // -------- Full HomeTabsScreen composition --------------------------------------
@@ -209,10 +197,10 @@ class HomeTabsScaffoldTest {
       activeChild = FakeHomeTabsComponent.ActiveChild.Alters
     )
 
-    val titles = setHomeTabsContent { TestHomeTabsScreen(fake, NavigationType.BOTTOM_BAR) }
+    setHomeTabsContent { TestHomeTabsScreen(fake, NavigationType.BOTTOM_BAR) }
 
     onNodeWithTag(HomeTabsTestTags.BOTTOM_BAR).assertExists()
-    tab(titles.alters).assertIsSelected()
+    tab(TabSlot.Alters).assertIsSelected()
   }
 
   @Test
@@ -222,10 +210,10 @@ class HomeTabsScaffoldTest {
       activeChild = FakeHomeTabsComponent.ActiveChild.Alters
     )
 
-    val titles = setHomeTabsContent { TestHomeTabsScreen(fake, NavigationType.RAIL) }
+    setHomeTabsContent { TestHomeTabsScreen(fake, NavigationType.RAIL) }
 
     onNodeWithTag(HomeTabsTestTags.NAVIGATION_RAIL).assertExists()
-    tab(titles.alters).assertIsSelected()
+    tab(TabSlot.Alters).assertIsSelected()
   }
 
   @Test
@@ -247,31 +235,9 @@ class HomeTabsScaffoldTest {
 
 // -------- Test helpers ------------------------------------------------------------
 
-/**
- * Captured visible labels for the four tabs, resolved via [stringResource]
- * inside composition. A top-level `runBlocking { getString(...) }` deadlocks
- * on Kotlin/Wasm because resource loads are async on the same event loop.
- */
-private data class TabTitles(
-  val alters: String,
-  val history: String,
-  val journal: String,
-  val friends: String,
-)
-
 @OptIn(ExperimentalTestApi::class)
-private fun ComposeUiTest.setHomeTabsContent(content: @Composable () -> Unit): TabTitles {
-  var titles: TabTitles? = null
-  setContent {
-    titles = TabTitles(
-      alters = stringResource(Res.string.alters),
-      history = stringResource(Res.string.history),
-      journal = stringResource(Res.string.journal),
-      friends = stringResource(Res.string.friends),
-    )
-    TestHomeTabsHost(content)
-  }
-  return requireNotNull(titles)
+private fun ComposeUiTest.setHomeTabsContent(content: @Composable () -> Unit) {
+  setContent { TestHomeTabsHost(content) }
 }
 
 /**
@@ -286,14 +252,12 @@ private fun ComposeUiTest.setHomeTabsContent(content: @Composable () -> Unit): T
 private val TabRoleMatcher: SemanticsMatcher =
   SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab)
 
-/**
- * Locates a single tab by its visible text label, combining [TabRoleMatcher]
- * with [hasText] so the matcher cannot accidentally bind to any other node
- * that happens to expose the same text.
- */
+/** Production order in [BottomBar] / [NavigationRail]. */
+private enum class TabSlot { Alters, History, Journal, Friends }
+
 @OptIn(ExperimentalTestApi::class)
-private fun SemanticsNodeInteractionsProvider.tab(title: String): SemanticsNodeInteraction =
-  onNode(TabRoleMatcher and hasText(title))
+private fun SemanticsNodeInteractionsProvider.tab(slot: TabSlot): SemanticsNodeInteraction =
+  onAllNodes(TabRoleMatcher)[slot.ordinal]
 
 private fun newFake(
   settings: Settings = Settings(),
