@@ -196,11 +196,19 @@ jobs:
     # fail at link time with `Undefined symbols for architecture arm64:
     # "_OBJC_CLASS_$_UIViewLayoutRegion"`. Xcode 26 also keeps the Swift 6
     # / Firebase 11.x compatibility we needed when we first left macos-14.
+    #
+    # One Gradle graph after pod install (`syncFramework`) so Kotlin/Native
+    # compiles iosArm64 Release once. xcodebuild archive skips the pod
+    # Gradle hook via OVERRIDE. gradle.properties has
+    # kotlin.incremental.native=true for local Xcode; CI stays false
+    # (cold incremental slowed ios-test, run 35647100803).
     runs-on: macos-26
     permissions:
       contents: read
       id-token: write
       attestations: write
+    env:
+      ORG_GRADLE_PROJECT_kotlin.incremental.native: "false"
 
     steps:
       - name: Checkout
@@ -270,8 +278,8 @@ jobs:
       #     to load unless build/cocoapods/framework/shared.framework
       #     already exists. Without this task pod install fails with
       #     "Kotlin framework 'shared' doesn't exist yet". The dummy
-      #     framework is a placeholder — real compilation still happens
-      #     via the pod's syncFramework script at xcodebuild time.
+      #     framework is a placeholder — real compilation is the
+      #     syncFramework Gradle step after pod install.
       - name: Prepare KMP iOS artifacts
         run: |
           set -euo pipefail
@@ -282,11 +290,9 @@ jobs:
             --stacktrace
 
       # CocoaPods is preinstalled on macos-26, so we just install pods.
-      # This transitively drives :shared:podPublishXCFramework via the KMP
-      # CocoaPods plugin so the `shared` static framework is compiled for
-      # iosArm64 and available at link time. --repo-update is only paid
-      # on a spec-repo cache miss; a warm cache already has the resolved
-      # pod versions.
+      # pod install does not compile shared.framework; it only generates
+      # the workspace. --repo-update is only paid on a spec-repo cache
+      # miss; a warm cache already has the resolved pod versions.
       - name: pod install
         working-directory: iosApp
         run: |
@@ -299,11 +305,38 @@ jobs:
             pod install --repo-update
           fi
 
+      # Device Release framework. -P flags are what the Kotlin CocoaPods
+      # plugin reads; PLATFORM_NAME / ARCHS / CONFIGURATION env vars are
+      # what Compose's syncPodComposeResourcesForIos reads (xcodeTargetArchs).
+      # Both are set by Xcode when the podspec script runs; we have to
+      # supply them here because this step is outside xcodebuild.
+      # Run 35196264156 spent 37m 36s on this graph inside xcodebuild.
+      - name: Gradle syncFramework (iosArm64 Release)
+        env:
+          PLATFORM_NAME: iphoneos
+          ARCHS: arm64
+          CONFIGURATION: Release
+        run: |
+          set -euo pipefail
+          ./gradlew :shared:syncFramework \
+            -PappVersion.tag="${RELEASE_TAG}" \
+            -PappVersion.runNumber="${{ github.run_number }}" \
+            -PappVersion.releaseName="${{ steps.appversion.outputs.release_name }}" \
+            -Pkotlin.native.cocoapods.platform=iphoneos \
+            -Pkotlin.native.cocoapods.archs=arm64 \
+            -Pkotlin.native.cocoapods.configuration=Release \
+            -Pkotlin.incremental.native=false \
+            --stacktrace
+
       # Archive Release configuration with signing off across all targets
       # (main app + widget extension + Pods). CODE_SIGNING_ALLOWED=NO
       # cascades to dependent build settings, so we don't need per-target
       # overrides. `-destination` is a generic device slice; simulator
       # archives don't produce a Payload/*.app that unzips cleanly.
+      # OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES makes the podspec's
+      # "Build shared" script exit before launching Gradle — the
+      # framework is already at shared/build/cocoapods/framework/.
+      # ARCHS=arm64 matches the prebuilt slice (same as ios-test).
       - name: Archive iosApp (unsigned)
         run: |
           set -euo pipefail
@@ -313,6 +346,8 @@ jobs:
             -configuration Release \
             -destination "generic/platform=iOS" \
             -archivePath "$RUNNER_TEMP/Interfold.xcarchive" \
+            ARCHS=arm64 \
+            OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
