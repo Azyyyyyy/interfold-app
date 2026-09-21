@@ -190,11 +190,11 @@ jobs:
   # `xcodebuild build`. macos-26 for iOS 26 SDK; cache keys match the
   # release workflow so PR runs warm ~/.konan and CocoaPods.
   #
-  # One Kotlin/Native compile after pod install: syncFramework and the
-  # test binary share compileKotlinIosSimulatorArm64. Tests are a second
-  # Gradle invocation with the same -P/env so compile/link stay
-  # UP-TO-DATE (incremental.native=false does not disable Gradle
-  # up-to-date). xcodebuild skips the CocoaPods Gradle hook via OVERRIDE.
+  # One Gradle graph after pod install (`syncFramework` + tests) so
+  # Kotlin/Native compiles iosSimulatorArm64 once. A second Gradle
+  # invocation re-runs compile/link: CocoaPods podBuild* tasks are not
+  # up-to-date-safe and dirty KN inputs. xcodebuild skips the pod
+  # Gradle hook via OVERRIDE.
   ios-test:
     name: shared :iosSimulatorArm64Test + xcodebuild build
     runs-on: macos-26
@@ -271,36 +271,23 @@ jobs:
             pod install --repo-update
           fi
 
-      # Compile once: CocoaPods framework + simulator test binary share
+      # One Gradle graph: CocoaPods framework + simulator tests share
       # compileKotlinIosSimulatorArm64. -P flags are what the Kotlin
       # CocoaPods plugin reads; PLATFORM_NAME / ARCHS / CONFIGURATION
       # env vars are what Compose's syncPodComposeResourcesForIos reads
       # (xcodeTargetArchs). Both are set by Xcode when the podspec
       # script runs; we have to supply them here because this step
-      # is outside xcodebuild. Same -P/env must be repeated on the
-      # test step or Gradle will treat compile inputs as changed.
-      - name: Gradle syncFramework + linkDebugTestIosSimulatorArm64
+      # is outside xcodebuild. Keep tests in this same invocation —
+      # a follow-up `iosSimulatorArm64Test` Gradle run re-executes
+      # compile/link (podBuildSDWebImage dirties KN inputs).
+      - name: Gradle syncFramework + iosSimulatorArm64Test
         env:
           PLATFORM_NAME: iphonesimulator
           ARCHS: arm64
           CONFIGURATION: Debug
         run: |
           set -euo pipefail
-          ./gradlew :shared:syncFramework :shared:linkDebugTestIosSimulatorArm64 \
-            -Pkotlin.native.cocoapods.platform=iphonesimulator \
-            -Pkotlin.native.cocoapods.archs=arm64 \
-            -Pkotlin.native.cocoapods.configuration=Debug \
-            -Pkotlin.incremental.native=false \
-            --stacktrace
-
-      - name: Run :shared:iosSimulatorArm64Test
-        env:
-          PLATFORM_NAME: iphonesimulator
-          ARCHS: arm64
-          CONFIGURATION: Debug
-        run: |
-          set -euo pipefail
-          ./gradlew :shared:iosSimulatorArm64Test \
+          ./gradlew :shared:syncFramework :shared:iosSimulatorArm64Test \
             -Pkotlin.native.cocoapods.platform=iphonesimulator \
             -Pkotlin.native.cocoapods.archs=arm64 \
             -Pkotlin.native.cocoapods.configuration=Debug \
