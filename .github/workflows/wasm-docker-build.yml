@@ -11,7 +11,7 @@ on:
       - develop
 
 jobs:
-  test:
+  android-test:
     name: shared :connectedAndroidDeviceTest
     runs-on: ubuntu-latest
     permissions:
@@ -37,12 +37,9 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
-      # Smoke-compile the test source set on the runner without an emulator.
-      # Fails fast on Gradle / source-set wiring issues before paying the
-      # ~5 min AVD boot. Task name comes from the new
-      # com.android.kotlin.multiplatform.library plugin (androidDeviceTest).
-      - name: Compile instrumented tests
-        run: ./gradlew :shared:compileAndroidDeviceTest --stacktrace
+      # APK only — no emulator yet. Fail-fast on source-set / AGP wiring.
+      - name: Assemble :shared:assembleAndroidDeviceTest
+        run: ./gradlew :shared:assembleAndroidDeviceTest --stacktrace
 
       - name: AVD cache
         id: avd-cache
@@ -85,63 +82,11 @@ jobs:
             shared/build/reports/androidTests/
             shared/build/outputs/androidTest-results/
 
-  # Fast JVM run of every `commonTest` case (~30s after warm cache). Runs in
-  # parallel with `test` to give PR authors near-immediate feedback if a common
-  # test breaks, without paying the Android emulator boot. Now part of the
-  # `build-wasm-image` deploy gate (see the `needs:` list on that job), so a
-  # Skia/AWT flake here must be treated as a real blocker that needs a rerun
-  # rather than silently ignored.
+  # JVM commonTest, then Testcontainers against the digest-pinned Interfold
+  # API image. Same shape as wasm-test. ubuntu-latest already has Docker
+  # and can reach bridge IPs (needed by BackendContainer.baseUrl).
   desktop-test:
     name: shared :desktopTest
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up JDK
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
-
-      - name: Run :shared:desktopTest
-        run: ./gradlew :shared:desktopTest --stacktrace
-
-      - name: Upload test reports
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: shared-desktop-test-report
-          path: |
-            shared/build/reports/tests/desktopTest/
-            shared/build/test-results/desktopTest/
-
-  # End-to-end slice against the published Interfold backend image
-  # (digest-pinned in shared/src/desktopIntegrationTest/.../BackendContainer.kt).
-  # Boots the image in Testcontainers, drives the OAuth-callback auth flow
-  # to obtain a real token, then exercises ApiInterfaceImpl through the
-  # Phoenix WebSocket + endpoint-proxy paths (LoadClient + CreateAlter).
-  #
-  # Part of the `build-wasm-image` deploy gate (see the `needs:` list on
-  # that job). A Testcontainers hiccup or a ghcr.io outage pulling the
-  # backend image therefore blocks WASM deploy until a rerun succeeds —
-  # that's the accepted trade-off for guaranteeing every WASM ship has
-  # green end-to-end signal.
-  # Approximate cost on a cold runner: ~30 s image pull + ~5 s tests.
-  #
-  # Requirements satisfied implicitly on `ubuntu-latest`:
-  # - Docker daemon pre-installed and reachable on the default Unix socket.
-  # - Bridge-network container IPs (172.17.x.y) are directly routable from
-  #   the host JVM, which BackendContainer.baseUrl depends on so the
-  #   backend's WebSocket endpoint-proxy loopback resolves correctly.
-  integration-test:
-    name: shared :desktopIntegrationTest
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -162,6 +107,12 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
+      - name: Compile desktop tests
+        run: ./gradlew :shared:compileTestKotlinDesktop :shared:compileIntegrationTestKotlinDesktop --stacktrace
+
+      - name: Run :shared:desktopTest
+        run: ./gradlew :shared:desktopTest --stacktrace
+
       - name: Run :shared:desktopIntegrationTest
         run: ./gradlew :shared:desktopIntegrationTest --stacktrace
 
@@ -169,36 +120,76 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: shared-integration-test-report
+          name: shared-desktop-test-report
           path: |
+            shared/build/reports/tests/desktopTest/
+            shared/build/test-results/desktopTest/
             shared/build/reports/tests/desktopIntegrationTest/
             shared/build/test-results/desktopIntegrationTest/
 
-  # Quick iOS build + test pass. Deliberately mirrors the iOS half of
-  # mobile-release.yml but stops at `xcodebuild build` — no archive, no
-  # IPA pack, no attest, no upload. Goal is a ~10-15 min warm signal that
-  # a future mobile release will still compile, plus running the same
-  # `commonTest` corpus on iOS that `test` runs on Android.
-  #
-  # macos-26 for iOS 26 SDK parity with mobile-release (Compose
-  # Multiplatform 1.11.x emits `UIViewLayoutRegion` refs that only link
-  # against the iOS 26 SDK — see the runner comment on mobile-release).
-  # Cache keys deliberately match mobile-release.yml so PR runs warm the
-  # ~/.konan and CocoaPods caches that the release workflow will re-use.
+  # Kotlin/Wasm browser tests (Karma + Chrome Headless). Unit run is the
+  # commonTest corpus on the same target we ship; the integration step starts
+  # the in-memory backend and re-runs the binary with a live HTTP/WS URL.
+  wasm-test:
+    name: shared :wasmJsBrowserTest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Set up Chrome
+        id: chrome
+        uses: browser-actions/setup-chrome@v2
+
+      # Kotlin + webpack of the Karma binary. Start the JVM backend later so
+      # this step stays compile-only.
+      - name: Compile wasm tests
+        run: ./gradlew :shared:wasmJsTestTestDevelopmentExecutableCompileSync :shared:compileIntegrationTestKotlinDesktop --stacktrace
+
+      - name: Run :shared:wasmJsBrowserTest
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+        run: ./gradlew :shared:wasmJsBrowserTest --stacktrace
+
+      - name: Run :shared:wasmJsBrowserIntegrationTest
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+        run: ./gradlew :shared:wasmJsBrowserIntegrationTest --stacktrace --no-configuration-cache
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: shared-wasm-test-report
+          path: |
+            shared/build/reports/tests/wasmJsBrowserTest/
+            shared/build/test-results/wasmJsBrowserTest/
+            shared/build/wasm-it/
+
+  # iOS compile + commonTest. Mirrors mobile-release.yml but stops at
+  # `xcodebuild build`. macos-26 for iOS 26 SDK; cache keys match the
+  # release workflow so PR runs warm ~/.konan and CocoaPods.
   ios-test:
     name: shared :iosSimulatorArm64Test + xcodebuild build
     runs-on: macos-26
     timeout-minutes: 40
     permissions:
       contents: read
-    # xcodebuild invokes Gradle through CocoaPods' Build shared script, which
-    # does not pass -Pkotlin.incremental.native=false. The env var is the
-    # Gradle equivalent and covers that nested invocation plus the explicit
-    # compile/test steps below. Needed because Kotlin/Native incremental
-    # compilation asserts on iosSimulatorArm64 Debug:
-    #   Failed to build cache for [...]/multiplatform-markdown-renderer[...]
-    #   java.lang.AssertionError: Lowering ReturnsInsertion: phases [Enums]
-    #   are required, but not satisfied
+    # Covers nested xcodebuild Gradle too. KN incremental asserts on
+    # iosSimulatorArm64 Debug (Lowering ReturnsInsertion / [Enums]).
     env:
       ORG_GRADLE_PROJECT_kotlin.incremental.native: "false"
 
@@ -265,39 +256,12 @@ jobs:
             pod install --repo-update
           fi
 
-      # Fast smoke compile of the iOS test source set. Analog to the
-      # `Compile instrumented tests` step in the Android job — fails fast
-      # on source-set / cinterop / pod-drift issues before we pay
-      # simulator boot cost in the test step below.
-      #
-      # `-Pkotlin.incremental.native=false` avoids a known Kotlin/Native
-      # compiler assertion the linker hits on iosSimulatorArm64 Debug/Test
-      # klibs:
-      #   Failed to build cache for [...]/multiplatform-markdown-renderer[...]
-      #   java.lang.AssertionError: Lowering ReturnsInsertion: phases
-      #   [Enums] are required, but not satisfied
-      # The Kotlin compiler itself suggests this flag as the workaround.
-      # Doesn't affect mobile-release.yml which uses linkReleaseFramework
-      # (a different phase pipeline).
+      # Kotlin/Native test klib + binary. Fail-fast before xcodebuild / sim.
       - name: Compile iOS simulator tests
-        run: ./gradlew :shared:compileTestKotlinIosSimulatorArm64 -Pkotlin.incremental.native=false --stacktrace
+        run: ./gradlew :shared:compileTestKotlinIosSimulatorArm64 :shared:linkDebugTestIosSimulatorArm64 -Pkotlin.incremental.native=false --stacktrace
 
-      # Build the Xcode target for Simulator arch. Skips archive, IPA
-      # pack, signing, and attestation — the pieces mobile-release adds
-      # on top. On macos-26 Apple Silicon the Simulator arch is
-      # `iosSimulatorArm64`, same LLVM target family as the `iosArm64`
-      # device build mobile-release uses, so Swift + KMP + linker errors
-      # surface identically. Difference vs mobile-release is limited to
-      # signing/entitlements (skipped) and thin-binary packaging (n/a
-      # for `build`).
-      #
-      # `ARCHS=arm64 ONLY_ACTIVE_ARCH=YES` pins the build to the
-      # iosSimulatorArm64 slice. Without them, `generic/platform=iOS
-      # Simulator` builds a fat slice on Apple Silicon (arm64 + x86_64)
-      # and Compose Multiplatform's `syncPodComposeResourcesForIos`
-      # aborts with "Unknown iOS simulator arch: 'x86_64'" — that arch
-      # slice isn't in the KMP plugin's whitelist because we don't
-      # declare an iosX64 target in shared/build.gradle.kts.
+      # Simulator-only (no archive/sign). ARCHS=arm64 avoids a fat
+      # arm64+x86_64 slice that Compose rejects (no iosX64 target).
       - name: xcodebuild build (Simulator)
         run: |
           set -euo pipefail
@@ -315,12 +279,6 @@ jobs:
             CODE_SIGN_ENTITLEMENTS="" \
             DEVELOPMENT_TEAM=""
 
-      # Direct KMP analog of :shared:connectedAndroidDeviceTest — same
-      # commonTest source set, compiled for iosSimulatorArm64, launched
-      # on a Kotlin/Native-managed simulator. Iterates the same test
-      # corpus across both mobile targets. Same -Pkotlin.incremental.native
-      # workaround as the smoke step; the linker (linkDebugTestIosSimulatorArm64)
-      # is what actually trips the [Enums] phase assertion.
       - name: Run :shared:iosSimulatorArm64Test
         run: ./gradlew :shared:iosSimulatorArm64Test -Pkotlin.incremental.native=false --stacktrace
 
@@ -334,7 +292,7 @@ jobs:
             shared/build/test-results/iosSimulatorArm64Test/
 
   build-wasm-image:
-    needs: [test, desktop-test, integration-test, ios-test]
+    needs: [android-test, desktop-test, ios-test, wasm-test]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:

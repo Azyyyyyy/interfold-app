@@ -33,17 +33,35 @@ import java.time.Duration
  * against a fork or testing an unreleased upstream change.
  */
 class BackendContainer : GenericContainer<BackendContainer>(resolveImage()) {
+  /**
+   * When [FIXED_PORT_PROPERTY] is set, host and container listen on the same
+   * port and [baseUrl] is `http://127.0.0.1:<port>`. Kotlin/Wasm Chrome tests
+   * need that: Phoenix's endpoint proxy loops back using the inbound `Host`
+   * header, which only resolves inside the container if the published port
+   * matches the listen port.
+   */
+  private val fixedHostPort: Int? =
+    System.getProperty(FIXED_PORT_PROPERTY)?.toIntOrNull()
+
+  private val listenPort: Int = fixedHostPort ?: 8080
+
   init {
     withEnv("OCTOCON_PERSISTENCE", "inmemory")
-    withEnv("ASPNETCORE_URLS", "http://+:8080")
+    withEnv("ASPNETCORE_URLS", "http://+:$listenPort")
     withEnv("OCTOCON_JWT_AUTHORITY", "interfold-test")
-    withEnv("OCTOCON_AUTH_CALLBACK_BASE_URL", "http://localhost:8080")
+    // Empty / unset means the in-memory image allows any Origin, which wasm
+    // Chrome tests need (Karma serves from a different port than the backend).
+    withEnv("OCTOCON_CORS_ALLOWED_ORIGINS", "")
+    withEnv("OCTOCON_AUTH_CALLBACK_BASE_URL", "http://127.0.0.1:$listenPort")
     withEnv("OCTOCON_JWT_ES256_PRIVATE_KEY_PEM", TestJwtKeypair.privatePem)
     withEnv("OCTOCON_JWT_ES256_VERIFICATION_KEYS", TestJwtKeypair.publicPem)
     withEnv(BackendSeedEnvVars.ENCRYPTION_PEPPER, "TEST")
     withEnv(BackendSeedEnvVars.JWT_ES256_PRIVATE_PEM, TestJwtKeypair.privatePem)
     withEnv(BackendSeedEnvVars.DEEP_LINK_SECRET, "TEST_DEEP_LINK_SECRET")
-    withExposedPorts(8080)
+    withExposedPorts(listenPort)
+    if (fixedHostPort != null) {
+      addFixedExposedPort(fixedHostPort, listenPort)
+    }
     waitingFor(
       Wait.forHttp("/health/ready")
         .forStatusCode(200)
@@ -56,24 +74,15 @@ class BackendContainer : GenericContainer<BackendContainer>(resolveImage()) {
    * Base URL for HTTP and WebSocket access. No trailing slash; no `/api`
    * suffix.
    *
-   * Connects to the container's internal IP + internal port (8080) rather
-   * than the docker-host's random mapped port. This matters for the
-   * WebSocket `endpoint` proxy: upstream `WebSocketHandler.HandleEndpointProxyAsync`
-   * builds its loopback target as
-   * `{Request.Scheme}://{Request.Host}{path}`, so the inbound `Host`
-   * header has to be one the container can re-resolve to its own listener.
-   * If we used `localhost:<random-mapped-port>` here the WS join would
-   * still succeed but every `endpoint`-proxied REST call (e.g.
-   * `createAlter`) would hang because the container can't reach
-   * `localhost:<random>` from inside itself.
-   *
-   * Requires the host JVM to be able to reach Docker's bridge network IPs
-   * — true by default on Linux, true with Docker Desktop's networking on
-   * macOS/Windows. If a future runtime breaks this, fall back to
-   * `addFixedExposedPort(8080, 8080)` and a `localhost:8080` URL.
+   * Default: the container's internal IP + [listenPort], so Phoenix
+   * `endpoint` proxy loopback (`{Request.Scheme}://{Request.Host}`) can
+   * re-resolve inside the container. Fixed-port mode (wasm Chrome) uses
+   * `127.0.0.1` on that same port instead — see [fixedHostPort].
    */
   val baseUrl: String
     get() {
+      val port = fixedHostPort
+      if (port != null) return "http://127.0.0.1:$port"
       val networks = containerInfo.networkSettings.networks
       val ip = networks["bridge"]?.ipAddress
         ?: networks.values.firstOrNull()?.ipAddress
@@ -81,10 +90,11 @@ class BackendContainer : GenericContainer<BackendContainer>(resolveImage()) {
           "Container has no resolvable network IP. " +
             "Networks: ${networks.keys}",
         )
-      return "http://$ip:8080"
+      return "http://$ip:$listenPort"
     }
 
   companion object {
+    const val FIXED_PORT_PROPERTY = "interfold.backend.port"
     // Pinned digest of ghcr.io/azyyyyyy/interfold-api at upstream revision
     // 7ba967c6 — the first published build with the bug-fixed
     // OCTOCON_INMEMORY_SECRETS_SEED__* env-var lookup. Bumping this pin

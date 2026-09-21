@@ -1,6 +1,6 @@
 package app.interfold.app.utils
 
-actual class FailingPlatformUtilities actual constructor() :
-  FailingPlatformUtilitiesBase(), PlatformUtilities {
-  override var injectedPlatformDelegate: PlatformDelegate? = null
-}
+actual fun failingPlatformUtilities(): PlatformUtilities =
+  object : FailingPlatformUtilitiesBase(), PlatformUtilities {
+    override var injectedPlatformDelegate: PlatformDelegate? = null
+  }
