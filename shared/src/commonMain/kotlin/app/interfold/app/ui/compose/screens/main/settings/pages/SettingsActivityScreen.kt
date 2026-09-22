@@ -4,7 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -77,8 +77,8 @@ fun SettingsActivityScreen(
   val clipboard = LocalClipboard.current
   val exportSupported = !currentPlatform.isWasm
 
-  LaunchedEffect(settings.shareActivityWithServer, settings.apiEndpoint) {
-    if (settings.shareActivityWithServer) {
+  LaunchedEffect(exportSupported, settings.shareActivityWithServer, settings.apiEndpoint) {
+    if (exportSupported && settings.shareActivityWithServer) {
       component.refreshDiscovery()
     }
   }
@@ -101,22 +101,25 @@ fun SettingsActivityScreen(
     },
     content = { _, _ ->
       LazyColumn(
-        modifier = Modifier.fillMaxHeight().padding(horizontal = GLOBAL_PADDING)
+        modifier = Modifier.fillMaxSize().padding(horizontal = GLOBAL_PADDING)
       ) {
-        SettingsSection(
-          null,
-          settings,
-          {
-            SettingsToggleItem(
-              text = Res.string.activity_share_with_server.compose,
-              value = settings.shareActivityWithServer,
-              spotlightDescription = Res.string.tooltip_activity_share_with_server_desc.compose,
-              cardGroupPosition = it,
-              enabled = exportSupported,
-              updateValue = component::setShareActivityWithServer,
-            )
-          },
-        )
+        if (exportSupported) {
+          SettingsSection(
+            null,
+            settings,
+            {
+              SettingsToggleItem(
+                text = Res.string.activity_share_with_server.compose,
+                value = settings.shareActivityWithServer,
+                spotlightDescription = Res.string.tooltip_activity_share_with_server_desc.compose,
+                cardGroupPosition = it,
+                updateValue = component::setShareActivityWithServer,
+              )
+            },
+          )
+        } else {
+          item { Spacer(modifier = Modifier.height(GLOBAL_PADDING)) }
+        }
         item {
           val statusText = when {
             !exportSupported -> Res.string.activity_export_unavailable_web.compose
@@ -138,20 +141,21 @@ fun SettingsActivityScreen(
             )
           }
         }
-        item {
-          var customUrl by state(settings.otlpEndpoint)
-          OutlinedTextField(
-            value = customUrl,
-            onValueChange = {
-              customUrl = it
-              component.setOtlpEndpoint(it)
-            },
-            enabled = exportSupported,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            label = { Text(Res.string.activity_custom_otlp.compose) },
-            supportingText = { Text(Res.string.tooltip_activity_custom_otlp_desc.compose) },
-            placeholder = { Text("http://host:4318") },
-          )
+        if (exportSupported) {
+          item {
+            var customUrl by state(settings.otlpEndpoint)
+            OutlinedTextField(
+              value = customUrl,
+              onValueChange = {
+                customUrl = it
+                component.setOtlpEndpoint(it)
+              },
+              modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+              label = { Text(Res.string.activity_custom_otlp.compose) },
+              supportingText = { Text(Res.string.tooltip_activity_custom_otlp_desc.compose) },
+              placeholder = { Text("http://host:4318") },
+            )
+          }
         }
         item {
           FlowRow(
@@ -230,9 +234,9 @@ private fun ActivityEventRow(event: ActivityEvent) {
       Text(it, style = MaterialTheme.typography.bodySmall)
     }
     event.attributes.forEach { (key, value) ->
-      if (key != "log.message") {
-        Text("$key=$value", style = MaterialTheme.typography.bodySmall)
-      }
+      if (key == "log.message") return@forEach
+      if (key == "exception.message" && value == event.message) return@forEach
+      Text("$key=$value", style = MaterialTheme.typography.bodySmall)
     }
   }
 }
