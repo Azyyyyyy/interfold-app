@@ -49,7 +49,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonObject
@@ -661,21 +663,14 @@ suspend fun fetchLoginMethods(apiBaseUrl: String): Pair<LoginMethods, Boolean> =
   withContext(ioDispatcher) {
     val base = apiBaseUrl.trimEnd('/')
     try {
-      val response = client.get("$base/auth/login-methods")
-      val body = response.bodyAsText()
-      val location = response.headers[HttpHeaders.Location]
-      if (looksLikeCloudflareAccessChallenge(response.status.value, location, body)) {
-        return@withContext LoginMethods(cloudflare = true) to true
+      withTimeout(LOGIN_METHODS_TIMEOUT_MS) {
+        val response = client.get("$base/auth/login-methods")
+        val body = response.bodyAsText()
+        val location = response.headers[HttpHeaders.Location]
+        parseLoginMethodsResponse(response.status.value, location, body)
       }
-      // Non-JSON success bodies (e.g. Access HTML served as 200) → treat as Access-on.
-      val trimmed = body.trimStart()
-      if (trimmed.startsWith("<") || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) {
-        return@withContext LoginMethods(cloudflare = true) to true
-      }
-      val parsed = globalSerializer.decodeFromString(LoginMethods.serializer(), body)
-      parsed to false
-    } catch (_: Exception) {
-      LoginMethods() to false
+    } catch (e: TimeoutCancellationException) {
+      throw Exception("Timed out fetching login methods", e)
     }
   }
 

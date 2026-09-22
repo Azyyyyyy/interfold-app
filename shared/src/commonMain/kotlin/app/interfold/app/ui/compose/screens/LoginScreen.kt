@@ -40,6 +40,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -78,6 +79,8 @@ import interfoldapp.shared.resources.login_cloudflare
 import interfoldapp.shared.resources.login_discord
 import interfoldapp.shared.resources.login_google
 import interfoldapp.shared.resources.login_methods_loading
+import interfoldapp.shared.resources.login_methods_none
+import interfoldapp.shared.resources.login_methods_retry
 import interfoldapp.shared.resources.login_methods_unavailable
 import interfoldapp.shared.resources.or_lowercase
 import interfoldapp.shared.resources.token
@@ -118,7 +121,8 @@ fun LoginScreen(
           verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
           when (loginMethodsStatus) {
-            LoginMethodsStatus.Idle, LoginMethodsStatus.Loading -> {
+            LoginMethodsStatus.Idle -> {}
+            LoginMethodsStatus.Loading -> {
               Row(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                 horizontalArrangement = Arrangement.Center,
@@ -132,19 +136,20 @@ fun LoginScreen(
                 )
               }
             }
-            LoginMethodsStatus.Failed -> {
-              if (!loginMethods.cloudflare && !loginMethods.google && !loginMethods.discord && !loginMethods.apple) {
-                Text(
-                  Res.string.login_methods_unavailable.compose,
-                  style = MaterialTheme.typography.bodyMedium,
-                  color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                  modifier = Modifier.padding(vertical = 8.dp),
-                )
-              } else {
+            LoginMethodsStatus.Failed -> LoginMethodsMessage(
+              text = Res.string.login_methods_unavailable.compose,
+              onRetry = component::fetchLoginMethods,
+            )
+            LoginMethodsStatus.Ready -> {
+              if (loginMethods.hasAny) {
                 LoginMethodsButtons(component, loginMethods)
+              } else {
+                LoginMethodsMessage(
+                  text = Res.string.login_methods_none.compose,
+                  onRetry = component::fetchLoginMethods,
+                )
               }
             }
-            LoginMethodsStatus.Ready -> LoginMethodsButtons(component, loginMethods)
           }
           Spacer(modifier = Modifier.windowInsetsBottomHeight(WindowInsets.systemBars))
         }
@@ -210,6 +215,27 @@ fun LoginScreen(
       }
     }
   )
+}
+
+@Composable
+private fun LoginMethodsMessage(
+  text: String,
+  onRetry: () -> Unit,
+) {
+  Column(
+    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+    horizontalAlignment = Alignment.CenterHorizontally,
+    verticalArrangement = Arrangement.spacedBy(4.dp),
+  ) {
+    Text(
+      text,
+      style = MaterialTheme.typography.bodyMedium,
+      color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+    )
+    TextButton(onClick = onRetry) {
+      Text(Res.string.login_methods_retry.compose)
+    }
+  }
 }
 
 @Composable
