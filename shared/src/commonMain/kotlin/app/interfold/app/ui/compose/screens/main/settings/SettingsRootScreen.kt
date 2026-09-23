@@ -70,6 +70,8 @@ import app.interfold.app.utils.MarkdownRenderer
 import app.interfold.app.utils.PlatformUtilities
 import app.interfold.app.utils.compose
 import app.interfold.app.utils.derive
+import app.interfold.app.utils.pendingWebAppVersion
+import app.interfold.app.utils.reloadWebApp
 import app.interfold.app.utils.savedState
 import app.interfold.app.utils.state
 import androidx.compose.foundation.layout.Row
@@ -162,6 +164,9 @@ import interfoldapp.shared.resources.unlink_discord_account_body
 import interfoldapp.shared.resources.unlink_discord_account_title
 import interfoldapp.shared.resources.unlink_google_account_body
 import interfoldapp.shared.resources.unlink_google_account_title
+import interfoldapp.shared.resources.web_app_update_reload
+import interfoldapp.shared.resources.web_app_update_settings_desc
+import interfoldapp.shared.resources.web_app_update_settings_title
 import interfoldapp.shared.resources.wipe_alters
 import interfoldapp.shared.resources.wipe_alters_body
 
@@ -187,6 +192,7 @@ fun SettingsRootScreen(
   val system by api.systemMe.collectAsState()
 
   val isSinglet = settingsData.isSinglet
+  val pendingUpdateVersion by pendingWebAppVersion.collectAsState(null)
 
   val setShowPushNotifications = LocalSetShowPushNotifications.current
 
@@ -215,6 +221,14 @@ fun SettingsRootScreen(
         LazyColumn(
           modifier = Modifier.fillMaxHeight().padding(horizontal = GLOBAL_PADDING),
         ) {
+          if (pendingUpdateVersion != null) {
+            SettingsSection(
+              null,
+              settingsData,
+              { SettingsApplyWebAppUpdate(it) }
+            )
+          }
+
           SettingsSection(
             app,
             settingsData,
@@ -349,6 +363,17 @@ fun SettingsRootScreen(
         }
       }
     }
+  )
+}
+
+@Composable
+private fun SettingsApplyWebAppUpdate(cardGroupPosition: CardGroupPosition) {
+  SettingsButtonItem(
+    text = Res.string.web_app_update_settings_title.compose,
+    buttonText = Res.string.web_app_update_reload.compose,
+    spotlightDescription = Res.string.web_app_update_settings_desc.compose,
+    cardGroupPosition = cardGroupPosition,
+    onClick = ::reloadWebApp
   )
 }
 

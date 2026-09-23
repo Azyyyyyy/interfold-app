@@ -155,7 +155,10 @@ self.addEventListener('install', (event) => {
       // just mean no background pushes; foreground push and offline caching
       // still work.
       ensureFirebaseInitialized().catch(() => false)
-    ]).then(() => self.skipWaiting())
+    ])
+    // Do not skipWaiting here. A replacement worker stays in `waiting` until
+    // the page posts SKIP_WAITING (Reload). First install still activates
+    // on its own because there is no existing controller.
   );
 });
 
@@ -183,7 +186,12 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'interfold-app-version-request') {
+  if (!event.data) return;
+  if (event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+    return;
+  }
+  if (event.data.type === 'interfold-app-version-request') {
     const source = event.source;
     if (source) {
       source.postMessage({ type: 'interfold-app-version', version: APP_VERSION });
@@ -204,25 +212,24 @@ function fetchAndCache(request) {
   );
 }
 
-function fetchNetworkFirst(request, cacheKey) {
+function fetchCacheFirst(request, cacheKey) {
   const key = cacheKey || request;
-  return fetch(request, { cache: 'no-cache' }).then((networkResp) => {
-    if (networkResp && networkResp.status === 200) {
-      return caches.open(CACHE_NAME).then((cache) => {
-        try {
-          cache.put(key, networkResp.clone());
-        } catch (e) {
-          // ignore cache put failures
-        }
-        return networkResp;
-      });
-    }
-    return networkResp;
-  }).catch(() =>
-    caches.match(key).then((cached) =>
-      cached || new Response('', { status: 503, statusText: 'Service Unavailable' })
-    )
-  );
+  return caches.match(key).then((cached) => {
+    if (cached) return cached;
+    return fetch(request).then((networkResp) => {
+      if (networkResp && networkResp.status === 200) {
+        return caches.open(CACHE_NAME).then((cache) => {
+          try {
+            cache.put(key, networkResp.clone());
+          } catch (e) {
+            // ignore cache put failures
+          }
+          return networkResp;
+        });
+      }
+      return networkResp;
+    }).catch(() => new Response('', { status: 503, statusText: 'Service Unavailable' }));
+  });
 }
 
 self.addEventListener('fetch', (event) => {
@@ -240,9 +247,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation requests - network-first so we get an updated app shell
+  // App shell stays cache-first so a refresh cannot apply a waiting
+  // worker's new HTML/JS until the user posts SKIP_WAITING.
   if (req.mode === 'navigate') {
-    event.respondWith(fetchNetworkFirst(req, '/index.html'));
+    event.respondWith(fetchCacheFirst(req, '/index.html'));
     return;
   }
 
@@ -252,10 +260,8 @@ self.addEventListener('fetch', (event) => {
                       pathname.endsWith('.js') ||
                       pathname.endsWith('.mjs');
 
-  // JS / WASM must not be served cache-first: interfold-app.js is unhashed
-  // and an old cached loader would pull an old wasm blob with it.
   if (isAppBinary) {
-    event.respondWith(fetchNetworkFirst(req));
+    event.respondWith(fetchCacheFirst(req));
     return;
   }
 

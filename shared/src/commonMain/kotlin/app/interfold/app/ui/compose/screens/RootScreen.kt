@@ -37,6 +37,8 @@ import app.interfold.app.utils.generateMarkdownComponents
 import app.interfold.app.utils.kamelConfig
 import app.interfold.app.utils.pendingWebAppVersion
 import app.interfold.app.utils.reloadWebApp
+import app.interfold.app.utils.webAppUpdateNoticeDismissed
+import kotlinx.coroutines.flow.combine
 import interfoldapp.shared.resources.Res
 import interfoldapp.shared.resources.web_app_update_ready
 import interfoldapp.shared.resources.web_app_update_reload
@@ -294,8 +296,13 @@ fun RootScreen(
         val updateReloadLabel = Res.string.web_app_update_reload.compose
 
         LaunchedEffect(updateReadyMessage, updateReloadLabel) {
-          pendingWebAppVersion.collect { version ->
-            if (version == null) return@collect
+          combine(pendingWebAppVersion, webAppUpdateNoticeDismissed) { version, dismissed ->
+            version.takeUnless { dismissed }
+          }.collect { version ->
+            if (version == null) {
+              updateSnackbarHostState.currentSnackbarData?.dismiss()
+              return@collect
+            }
             val result = updateSnackbarHostState.showSnackbar(
               message = updateReadyMessage,
               actionLabel = updateReloadLabel,

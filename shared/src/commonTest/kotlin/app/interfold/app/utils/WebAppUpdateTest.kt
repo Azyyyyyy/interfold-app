@@ -6,49 +6,45 @@ import kotlin.test.assertTrue
 
 class WebAppUpdateTest {
   @Test
-  fun announcesWhenIncomingVersionDiffers() {
+  fun pendingWhenIncomingVersionDiffers() {
     assertTrue(
-      shouldAnnounceWebAppUpdate(
+      isPendingWebAppVersion(
         runningBuildId = "2026.09.20-63",
         incomingVersion = "2026.09.20-69",
-        dismissedVersion = null,
       )
     )
   }
 
   @Test
-  fun staysQuietWhenVersionsMatch() {
+  fun notPendingWhenVersionsMatch() {
     assertFalse(
-      shouldAnnounceWebAppUpdate(
+      isPendingWebAppVersion(
         runningBuildId = "2026.09.20-69",
         incomingVersion = "2026.09.20-69",
-        dismissedVersion = null,
       )
     )
   }
 
   @Test
-  fun staysQuietForMissingOrBlankIncomingVersion() {
+  fun notPendingForMissingOrBlankIncomingVersion() {
     assertFalse(
-      shouldAnnounceWebAppUpdate(
+      isPendingWebAppVersion(
         runningBuildId = "2026.09.20-63",
         incomingVersion = null,
-        dismissedVersion = null,
       )
     )
     assertFalse(
-      shouldAnnounceWebAppUpdate(
+      isPendingWebAppVersion(
         runningBuildId = "2026.09.20-63",
         incomingVersion = "",
-        dismissedVersion = null,
       )
     )
   }
 
   @Test
-  fun staysQuietWhenIncomingVersionWasDismissed() {
+  fun noticeStaysQuietWhenIncomingVersionWasDismissed() {
     assertFalse(
-      shouldAnnounceWebAppUpdate(
+      shouldShowWebAppUpdateNotice(
         runningBuildId = "2026.09.20-63",
         incomingVersion = "2026.09.20-69",
         dismissedVersion = "2026.09.20-69",
@@ -57,11 +53,28 @@ class WebAppUpdateTest {
   }
 
   @Test
-  fun announcesAgainForADifferentVersionAfterDismiss() {
+  fun noticeShowsAgainForADifferentVersionAfterDismiss() {
     assertTrue(
-      shouldAnnounceWebAppUpdate(
+      shouldShowWebAppUpdateNotice(
         runningBuildId = "2026.09.20-63",
         incomingVersion = "2026.09.20-70",
+        dismissedVersion = "2026.09.20-69",
+      )
+    )
+  }
+
+  @Test
+  fun pendingRemainsAfterDismissSoSettingsCanOfferReload() {
+    assertTrue(
+      isPendingWebAppVersion(
+        runningBuildId = "2026.09.20-63",
+        incomingVersion = "2026.09.20-69",
+      )
+    )
+    assertFalse(
+      shouldShowWebAppUpdateNotice(
+        runningBuildId = "2026.09.20-63",
+        incomingVersion = "2026.09.20-69",
         dismissedVersion = "2026.09.20-69",
       )
     )
