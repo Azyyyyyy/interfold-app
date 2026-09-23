@@ -94,7 +94,9 @@ abstract class GenerateServiceWorkerPrecacheTask : DefaultTask() {
       }
       .filter { path ->
         val ext = path.substringAfterLast('.', "").lowercase()
-        ext in allowedExts
+        // runtime-config.js is rewritten at container start and must stay out of
+        // the versioned precache.
+        ext in allowedExts && path != "/runtime-config.js"
       }
       .sorted()
       .distinct()

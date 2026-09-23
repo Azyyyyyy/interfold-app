@@ -239,6 +239,13 @@ self.addEventListener('fetch', (event) => {
   // Only handle same-origin requests
   if (url.origin !== self.location.origin) return;
 
+  // Written at container start from INTERFOLD_DEFAULT_API_ENDPOINT. Must not be
+  // frozen in the app cache, or a restarted container would keep the old URL.
+  if (url.pathname === '/runtime-config.js') {
+    event.respondWith(fetch(req, { cache: 'no-store' }));
+    return;
+  }
+
   // API requests - network-first, fallback to cache
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(

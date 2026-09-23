@@ -77,6 +77,11 @@ server {
         add_header Cache-Control "no-cache";
     }
 
+    # Regenerated at container start from INTERFOLD_DEFAULT_API_ENDPOINT.
+    location = /runtime-config.js {
+        add_header Cache-Control "no-store";
+    }
+
     # Content-hashed Kotlin/Wasm blobs (e.g. 5d9ec0de….wasm).
     location ~* \.wasm$ {
         add_header Cache-Control "public, max-age=31536000, immutable";
@@ -93,6 +98,19 @@ server {
         root   /usr/share/nginx/html;
     }
 }
+EOF
+
+# The image entrypoint runs envsubst on /etc/nginx/templates/*.template.
+# This output dir is the web root, so do not add nginx config templates here:
+# they would be written next to the Wasm bundle instead of conf.d.
+# INTERFOLD_DEFAULT_API_ENDPOINT is set (empty) so an unset override still
+# renders a valid script. Browsers that already saved an endpoint keep it.
+ENV NGINX_ENVSUBST_OUTPUT_DIR=/usr/share/nginx/html
+ENV NGINX_ENVSUBST_FILTER=^INTERFOLD_DEFAULT_API_ENDPOINT$
+ENV INTERFOLD_DEFAULT_API_ENDPOINT=
+
+COPY <<'EOF' /etc/nginx/templates/runtime-config.js.template
+globalThis.__INTERFOLD_DEFAULT_API_ENDPOINT__ = "${INTERFOLD_DEFAULT_API_ENDPOINT}";
 EOF
 
 EXPOSE 8080
