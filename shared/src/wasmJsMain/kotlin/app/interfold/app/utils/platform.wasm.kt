@@ -88,6 +88,19 @@ private external fun unregisterServiceWorkers()
 @JsFun("() => window.matchMedia('(display-mode: standalone)').matches")
 private external fun isStandalone(): Boolean
 
+@JsFun("() => (typeof globalThis.__INTERFOLD_DEFAULT_API_ENDPOINT__ === 'string' ? globalThis.__INTERFOLD_DEFAULT_API_ENDPOINT__ : '')")
+private external fun deploymentApiEndpoint(): String
+
+/**
+ * Settings for a cold web start. [serialized] is the localStorage payload, or
+ * null when the browser has never saved settings. A deployment default from
+ * `runtime-config.js` fills in only when that payload has no API endpoint.
+ */
+fun resolveWebClientSettings(serialized: String?): Settings {
+  val stored = if (serialized.isNullOrBlank()) null else Settings.deserialize(serialized)
+  return applyDeploymentApiEndpoint(stored, deploymentApiEndpoint())
+}
+
 @JsFun("(buffer) => new Uint8Array(buffer)")
 private external fun jsUint8Array(buffer: JsAny): Uint8Array
 
@@ -240,13 +253,13 @@ val platformUtilities = object : PlatformUtilities {
         val currentSettingsJson = localStorage.getItem(SETTINGS_LOCALSTORAGE_KEY)
         return if (currentSettingsJson != null) {
             try {
-                Settings.deserialize(currentSettingsJson)
+                resolveWebClientSettings(currentSettingsJson)
             } catch (e: Exception) {
                 platformLog("SETTINGS", "Failed to deserialize settings in setupEncryptionKey: $e")
                 return null
             }
         } else {
-            Settings()
+            resolveWebClientSettings(null)
         }
     }
 
