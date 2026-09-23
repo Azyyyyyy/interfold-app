@@ -50,7 +50,7 @@ internal fun sanitizeTelemetryText(text: String?): String? {
     result,
     "${CloudflareAccessCredentials.COOKIE_NAME}=$TELEMETRY_REDACTED",
   )
-  return result
+  return normalizeOpaqueJsObjectMessage(result) ?: result
 }
 
 internal fun isSensitiveTelemetryAttributeKey(key: String): Boolean {
