@@ -65,7 +65,14 @@ class JournalComponentImpl(
     DetailsConfig(entryID)
   )
 
-  override fun onBackPressed() = navigator.pop()
+  override fun onBackPressed() {
+    val details = _panels.value.details?.instance
+    if (details != null) {
+      details.navigateBack(trySave = true)
+    } else {
+      navigator.pop()
+    }
+  }
 
   override fun setMode(mode: ChildPanelsMode) = navigator.setMode(mode)
 
