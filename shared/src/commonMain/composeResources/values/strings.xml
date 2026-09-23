@@ -19,6 +19,8 @@
     <string name="login_cloudflare">Continue with Cloudflare</string>
     <string name="login_methods_loading">Checking sign-in options…</string>
     <string name="login_methods_unavailable">Could not load sign-in options. Check your server URL.</string>
+    <string name="login_methods_none">This server has no sign-in methods configured.</string>
+    <string name="login_methods_retry">Try again</string>
     <string name="or_lowercase">or</string>
 
     <string name="direct_token_login_title">Direct token login</string>
@@ -513,7 +515,7 @@
     <string name="activity_export_unavailable_web">The web app keeps activity on this device. OpenTelemetry export is not available here.</string>
     <string name="activity_filter_all">All</string>
     <string name="activity_filter_network">Network</string>
-    <string name="activity_filter_logs">platformLog</string>
+    <string name="activity_filter_logs">Platform</string>
     <string name="activity_filter_errors">Errors</string>
     <string name="activity_clear">Clear</string>
     <string name="activity_copy">Copy</string>

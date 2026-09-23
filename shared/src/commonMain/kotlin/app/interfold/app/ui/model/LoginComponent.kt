@@ -1,6 +1,7 @@
 package app.interfold.app.ui.model
 
 import app.interfold.app.BuildInfo
+import app.interfold.app.api.LOGIN_METHODS_TIMEOUT_MS
 import app.interfold.app.api.LoginMethods
 import app.interfold.app.api.LoginMethodsStatus
 import app.interfold.app.api.fetchLoginMethods
@@ -16,13 +17,16 @@ import app.interfold.app.utils.WebURLOpenBehavior
 import app.interfold.app.utils.buildRedirectUri
 import app.interfold.app.utils.ioDispatcher
 import com.arkivanov.essenty.lifecycle.coroutines.coroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.Serializable
 
 enum class ServerHealthStatus {
@@ -137,27 +141,42 @@ internal class LoginComponentImpl(
     healthCheckJob?.cancel()
     val baseUrl = model.value.serverUrl.trimEnd('/')
     if (baseUrl.isBlank()) {
-      model.tryEmit(model.value.copy(serverHealthStatus = ServerHealthStatus.UNREACHABLE))
+      markServerUnreachable()
       return
     }
 
-    model.tryEmit(model.value.copy(serverHealthStatus = ServerHealthStatus.CHECKING))
+    model.tryEmit(
+      model.value.copy(
+        serverHealthStatus = ServerHealthStatus.CHECKING,
+        loginMethodsStatus = LoginMethodsStatus.Loading,
+      )
+    )
 
     healthCheckJob = scope.launch {
       try {
-        val result = withContext(ioDispatcher) { performHealthCheck(baseUrl) }
+        val result = withContext(ioDispatcher) {
+          withTimeout(LOGIN_METHODS_TIMEOUT_MS) { performHealthCheck(baseUrl) }
+        }
 
         val status = when {
           result.readyUp && result.liveUp -> ServerHealthStatus.HEALTHY
           result.liveUp -> ServerHealthStatus.DEGRADED
           else -> ServerHealthStatus.UNREACHABLE
         }
-        model.tryEmit(model.value.copy(serverHealthStatus = status))
         if (status == ServerHealthStatus.HEALTHY || status == ServerHealthStatus.DEGRADED) {
+          model.tryEmit(model.value.copy(serverHealthStatus = status))
           fetchLoginMethods()
+        } else {
+          markServerUnreachable()
         }
-      } catch (_: Exception) {
-        model.tryEmit(model.value.copy(serverHealthStatus = ServerHealthStatus.UNREACHABLE))
+      } catch (e: CancellationException) {
+        if (e is TimeoutCancellationException) {
+          markServerUnreachable()
+        } else {
+          throw e
+        }
+      } catch (_: Throwable) {
+        markServerUnreachable()
       }
     }
   }
@@ -165,7 +184,15 @@ internal class LoginComponentImpl(
   override fun fetchLoginMethods() {
     loginMethodsJob?.cancel()
     val baseUrl = model.value.serverUrl.trimEnd('/')
-    if (baseUrl.isBlank()) return
+    if (baseUrl.isBlank()) {
+      model.tryEmit(
+        model.value.copy(
+          loginMethods = LoginMethods(),
+          loginMethodsStatus = LoginMethodsStatus.Failed,
+        )
+      )
+      return
+    }
 
     model.tryEmit(model.value.copy(loginMethodsStatus = LoginMethodsStatus.Loading))
     loginMethodsJob = scope.launch {
@@ -177,7 +204,9 @@ internal class LoginComponentImpl(
             loginMethodsStatus = LoginMethodsStatus.Ready,
           )
         )
-      } catch (_: Exception) {
+      } catch (e: CancellationException) {
+        throw e
+      } catch (_: Throwable) {
         model.tryEmit(
           model.value.copy(
             loginMethods = LoginMethods(),
@@ -186,6 +215,17 @@ internal class LoginComponentImpl(
         )
       }
     }
+  }
+
+  private fun markServerUnreachable() {
+    loginMethodsJob?.cancel()
+    model.tryEmit(
+      model.value.copy(
+        serverHealthStatus = ServerHealthStatus.UNREACHABLE,
+        loginMethods = LoginMethods(),
+        loginMethodsStatus = LoginMethodsStatus.Failed,
+      )
+    )
   }
 
   override fun incrementDirectTokenLoginTimesPressed() {

@@ -96,12 +96,102 @@ class ClientActivityStoreTest {
       status = ActivityStatus.ERROR,
       durationMillis = 0,
     )
+    ClientActivityStore.record(
+      name = "phoenix.failure",
+      scope = ActivityScope.APP,
+      status = ActivityStatus.ERROR,
+      durationMillis = 12,
+      attributes = mapOf("exception.message" to "socket closed"),
+    )
+    ClientActivityStore.record(
+      name = "loadClient",
+      scope = ActivityScope.APP,
+      status = ActivityStatus.OK,
+      durationMillis = 40,
+    )
 
     val events = ClientActivityStore.snapshot()
-    assertEquals(listOf("http.get", "uncaught.exception"), events.filtered(ActivityFilter.NETWORK).map { it.name })
+    assertEquals(listOf("http.get", "phoenix.failure"), events.filtered(ActivityFilter.NETWORK).map { it.name })
     assertEquals(listOf("platform.log"), events.filtered(ActivityFilter.PLATFORM_LOG).map { it.name })
-    assertEquals(listOf("uncaught.exception"), events.filtered(ActivityFilter.ERRORS).map { it.name })
-    assertEquals(3, events.filtered(ActivityFilter.ALL).size)
+    assertEquals(
+      listOf("uncaught.exception", "phoenix.failure"),
+      events.filtered(ActivityFilter.ERRORS).map { it.name },
+    )
+    assertEquals(5, events.filtered(ActivityFilter.ALL).size)
+  }
+
+  @Test
+  fun sanitizesDomEventErrorMessages() {
+    ClientActivityStore.record(
+      name = "phoenix.failure",
+      scope = ActivityScope.APP,
+      status = ActivityStatus.ERROR,
+      durationMillis = 1,
+      attributes = mapOf("exception.message" to "[object Event]"),
+      message = """{"target":{},"type":"error","isTrusted":true}""",
+    )
+
+    val event = ClientActivityStore.snapshot().single()
+    assertEquals(BROWSER_ERROR_EVENT, event.message)
+    assertEquals(BROWSER_ERROR_EVENT, event.attributes["exception.message"])
+  }
+
+  @Test
+  fun restoreKeepsErrorsAndDoesNotReuseIds() {
+    val restored = ActivityEvent(
+      id = 42,
+      name = "phoenix.failure",
+      scope = ActivityScope.APP,
+      status = ActivityStatus.ERROR,
+      startedAtMillis = 1_000,
+      durationMillis = 5,
+      attributes = mapOf("exception.message" to BROWSER_ERROR_EVENT),
+      message = BROWSER_ERROR_EVENT,
+    )
+    ClientActivityStore.restore(listOf(restored))
+
+    val afterRestore = ClientActivityStore.snapshot().single()
+    assertEquals(42, afterRestore.id)
+    assertEquals("phoenix.failure", afterRestore.name)
+
+    val next = ClientActivityStore.record(
+      name = "later",
+      scope = ActivityScope.APP,
+      status = ActivityStatus.OK,
+      durationMillis = 0,
+    )
+    assertTrue(next.id > 42)
+    assertEquals(listOf("phoenix.failure", "later"), ClientActivityStore.snapshot().map { it.name })
+  }
+
+  @Test
+  fun activityEventListRoundtripsJson() {
+    val events = listOf(
+      ActivityEvent(
+        id = 6,
+        name = "phoenix.connect",
+        scope = ActivityScope.APP,
+        status = ActivityStatus.OK,
+        startedAtMillis = 1_700_000_000_000,
+        durationMillis = 8,
+        attributes = mapOf("phoenix.reconnect" to "false"),
+        message = null,
+      ),
+      ActivityEvent(
+        id = 7,
+        name = "phoenix.failure",
+        scope = ActivityScope.APP,
+        status = ActivityStatus.ERROR,
+        startedAtMillis = 1_700_000_000_100,
+        durationMillis = 12,
+        attributes = mapOf("exception.message" to BROWSER_ERROR_EVENT, "phoenix.close_code" to "1006"),
+        message = BROWSER_ERROR_EVENT,
+      ),
+    )
+    val json = serializeActivityEvents(events)
+    assertTrue(json.contains("phoenix.connect"))
+    assertTrue(json.contains("phoenix.failure"))
+    assertEquals(events, deserializeActivityEvents(json))
   }
 }
 
