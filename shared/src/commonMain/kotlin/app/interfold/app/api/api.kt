@@ -15,6 +15,7 @@ import app.interfold.app.api.model.MyTag
 import app.interfold.app.api.model.Poll
 import app.interfold.app.telemetry.ActivityStatus
 import app.interfold.app.telemetry.Telemetry
+import app.interfold.app.telemetry.readableExceptionMessage
 import app.interfold.app.utils.BuildConfig
 import app.interfold.app.utils.DevicePlatform
 import app.interfold.app.utils.globalSerializer
@@ -49,7 +50,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonObject
@@ -416,14 +419,15 @@ internal class KotlixPhoenixSocketSession(
           }
         }
         is SocketEvent.FailureEvent -> {
+          val message = readableExceptionMessage(it.throwable)
           Telemetry.finishSpan(
             name = "phoenix.failure",
             status = ActivityStatus.ERROR,
             startedAtMillis = connectAttemptAtMillis,
-            attributes = mapOf("exception.message" to (it.throwable.message ?: "Unknown error")),
-            message = it.throwable.message,
+            attributes = mapOf("exception.message" to message),
+            message = message,
           )
-          errorPipeline.emit(it.throwable.message ?: "Unknown error")
+          errorPipeline.emit(message)
         }
         is SocketEvent.MessageEvent -> {
           parseChannelMessage(it.text)?.let { msg ->
@@ -661,21 +665,14 @@ suspend fun fetchLoginMethods(apiBaseUrl: String): Pair<LoginMethods, Boolean> =
   withContext(ioDispatcher) {
     val base = apiBaseUrl.trimEnd('/')
     try {
-      val response = client.get("$base/auth/login-methods")
-      val body = response.bodyAsText()
-      val location = response.headers[HttpHeaders.Location]
-      if (looksLikeCloudflareAccessChallenge(response.status.value, location, body)) {
-        return@withContext LoginMethods(cloudflare = true) to true
+      withTimeout(LOGIN_METHODS_TIMEOUT_MS) {
+        val response = client.get("$base/auth/login-methods")
+        val body = response.bodyAsText()
+        val location = response.headers[HttpHeaders.Location]
+        parseLoginMethodsResponse(response.status.value, location, body)
       }
-      // Non-JSON success bodies (e.g. Access HTML served as 200) → treat as Access-on.
-      val trimmed = body.trimStart()
-      if (trimmed.startsWith("<") || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) {
-        return@withContext LoginMethods(cloudflare = true) to true
-      }
-      val parsed = globalSerializer.decodeFromString(LoginMethods.serializer(), body)
-      parsed to false
-    } catch (_: Exception) {
-      LoginMethods() to false
+    } catch (e: TimeoutCancellationException) {
+      throw Exception("Timed out fetching login methods", e)
     }
   }
 

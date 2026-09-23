@@ -26,8 +26,11 @@ object Telemetry {
   val discovery: StateFlow<OtlpDiscoveryState> = _discovery.asStateFlow()
 
   private var lastExportKey: String? = null
+  private var lastUncaughtMessage: String? = null
+  private var lastUncaughtAtMillis: Long = 0L
 
   fun install() {
+    ClientActivityStore.restore(loadPersistedActivityEvents())
     installUncaughtExceptionTelemetry()
   }
 
@@ -91,9 +94,14 @@ object Telemetry {
   }
 
   fun recordException(throwable: Throwable) {
+    val message = readableExceptionMessage(throwable)
+    val now = Clock.System.now().toEpochMilliseconds()
+    if (message == lastUncaughtMessage && now - lastUncaughtAtMillis < 1_000L) return
+    lastUncaughtMessage = message
+    lastUncaughtAtMillis = now
     val attrs = mapOf(
-      "exception.type" to (throwable::class.simpleName ?: "Throwable"),
-      "exception.message" to (throwable.message ?: ""),
+      "exception.type" to readableExceptionType(throwable),
+      "exception.message" to message,
     )
     ClientActivityStore.record(
       name = "uncaught.exception",
@@ -101,7 +109,7 @@ object Telemetry {
       status = ActivityStatus.ERROR,
       durationMillis = 0,
       attributes = attrs,
-      message = throwable.message,
+      message = message,
     )
     emitOtelSpan(
       tracerName = APP_TRACER,
