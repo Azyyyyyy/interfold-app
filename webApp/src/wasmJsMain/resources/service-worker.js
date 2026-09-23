@@ -155,9 +155,20 @@ self.addEventListener('install', (event) => {
       // just mean no background pushes; foreground push and offline caching
       // still work.
       ensureFirebaseInitialized().catch(() => false)
-    ]).then(() => self.skipWaiting())
+    ])
+    // Do not skipWaiting here. A replacement worker stays in `waiting` until
+    // the page posts SKIP_WAITING (Reload). First install still activates
+    // on its own because there is no existing controller.
   );
 });
+
+function broadcastAppVersion() {
+  return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+    clients.forEach((client) => {
+      client.postMessage({ type: 'interfold-app-version', version: APP_VERSION });
+    });
+  });
+}
 
 self.addEventListener('activate', (event) => {
   console.log('[SW] Activate - clearing old caches + ensuring Firebase');
@@ -170,8 +181,22 @@ self.addEventListener('activate', (event) => {
         })
       )),
       ensureFirebaseInitialized().catch(() => false)
-    ]).then(() => self.clients.claim())
+    ]).then(() => self.clients.claim()).then(() => broadcastAppVersion())
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (!event.data) return;
+  if (event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+    return;
+  }
+  if (event.data.type === 'interfold-app-version-request') {
+    const source = event.source;
+    if (source) {
+      source.postMessage({ type: 'interfold-app-version', version: APP_VERSION });
+    }
+  }
 });
 
 function fetchAndCache(request) {
@@ -185,6 +210,26 @@ function fetchAndCache(request) {
       caches.match(request).then((cached) => cached || new Response('', { status: 503, statusText: 'Service Unavailable' }))
     )
   );
+}
+
+function fetchCacheFirst(request, cacheKey) {
+  const key = cacheKey || request;
+  return caches.match(key).then((cached) => {
+    if (cached) return cached;
+    return fetch(request).then((networkResp) => {
+      if (networkResp && networkResp.status === 200) {
+        return caches.open(CACHE_NAME).then((cache) => {
+          try {
+            cache.put(key, networkResp.clone());
+          } catch (e) {
+            // ignore cache put failures
+          }
+          return networkResp;
+        });
+      }
+      return networkResp;
+    }).catch(() => new Response('', { status: 503, statusText: 'Service Unavailable' }));
+  });
 }
 
 self.addEventListener('fetch', (event) => {
@@ -202,33 +247,32 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation requests - network-first so we get updated app shell
+  // App shell stays cache-first so a refresh cannot apply a waiting
+  // worker's new HTML/JS until the user posts SKIP_WAITING.
   if (req.mode === 'navigate') {
-    event.respondWith(
-      fetch(req).then((networkResp) => {
-        return caches.open(CACHE_NAME).then((cache) => {
-          try {
-            cache.put('/index.html', networkResp.clone());
-          } catch (e) {
-            // ignore cache put failures
-          }
-          return networkResp;
-        });
-      }).catch(() => caches.match('/index.html'))
-    );
+    event.respondWith(fetchCacheFirst(req, '/index.html'));
     return;
   }
 
-  // Assets (JS, WASM, CSS, images) - stale-while-revalidate: serve cache immediately, update in background
-  const isAsset = req.destination === 'script' ||
-                  req.destination === 'style' ||
-                  req.destination === 'image' ||
-                  req.url.endsWith('.wasm') ||
-                  req.url.endsWith('.js') ||
-                  req.url.endsWith('.css') ||
-                  req.url.includes('/lib/');
+  const pathname = url.pathname;
+  const isAppBinary = req.destination === 'script' ||
+                      pathname.endsWith('.wasm') ||
+                      pathname.endsWith('.js') ||
+                      pathname.endsWith('.mjs');
 
-  if (isAsset) {
+  if (isAppBinary) {
+    event.respondWith(fetchCacheFirst(req));
+    return;
+  }
+
+  // Images, fonts, CSS - stale-while-revalidate
+  const isStaticAsset = req.destination === 'style' ||
+                        req.destination === 'image' ||
+                        req.destination === 'font' ||
+                        pathname.endsWith('.css') ||
+                        pathname.includes('/lib/');
+
+  if (isStaticAsset) {
     event.respondWith(
       caches.match(req).then((cachedResp) => {
         const networkFetch = fetch(req).then((networkResp) => {

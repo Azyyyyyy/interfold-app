@@ -775,4 +775,9 @@
     <string name="cache_client_body">When enabled, the app will be cached on your device for offline use. This will also allow you to install the app as a PWA (Progressive Web App).</string>
     <string name="tooltip_cache_client_desc">This setting controls whether the app is cached on your device using a service worker. This allows the app to load faster and work offline, and is required for installing it as an app on your home screen.</string>
     <string name="tooltip_cache_client_locked_desc">This setting is required when the app is installed on your device.</string>
+
+    <string name="web_app_update_ready">An update is ready. Dismiss to keep this version until the next update, or apply it later in Settings.</string>
+    <string name="web_app_update_reload">Reload</string>
+    <string name="web_app_update_settings_title">App update ready</string>
+    <string name="web_app_update_settings_desc">A newer version is waiting. Reload to apply it now. This version stays until you reload or a later update arrives.</string>
 </resources>

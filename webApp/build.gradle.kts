@@ -158,6 +158,24 @@ abstract class GenerateServiceWorkerPrecacheTask : DefaultTask() {
       tmp.delete()
     }
     println("[generatePrecache] updated ${swFile.absolutePath} with ${files.size} entries; APP_VERSION=$effectiveBuildId")
+
+    // Bust the unhashed JS loader URL so an already-installed SW's cache
+    // key misses and falls through to the network.
+    stampIndexHtml(File(processedDir, "index.html"), effectiveBuildId)
+  }
+
+  companion object {
+    fun stampIndexHtml(file: File, buildId: String) {
+      if (!file.exists()) return
+      val original = file.readText(Charsets.UTF_8)
+      val stamped = original.replace(
+        Regex("""src=["']interfold-app\.js(?:\?v=[^"']*)?["']"""),
+        """src="interfold-app.js?v=$buildId""""
+      )
+      if (stamped == original) return
+      file.writeText(stamped, Charsets.UTF_8)
+      println("[generatePrecache] stamped ${file.absolutePath} with interfold-app.js?v=$buildId")
+    }
   }
 }
 
@@ -191,6 +209,28 @@ generateServiceWorkerPrecache.configure {
 tasks.matching { it.name == "wasmJsBrowserDevelopmentRun" || it.name == "wasmJsBrowserDistribution" }
   .configureEach {
     dependsOn(generateServiceWorkerPrecache)
+  }
+
+// Webpack copies index.html before generateServiceWorkerPrecache runs, so
+// stamp the distribution HTML after the copy so the baked image has the
+// versioned script URL even when the generator was already up-to-date.
+tasks.matching { it.name == "wasmJsBrowserDistribution" }
+  .configureEach {
+    val distHtml = layout.buildDirectory.file("dist/wasmJs/productionExecutable/index.html")
+    val swDist = layout.buildDirectory.file("dist/wasmJs/productionExecutable/service-worker.js")
+    val swProcessed = layout.buildDirectory.file("processedResources/wasmJs/main/service-worker.js")
+    doLast {
+      val htmlFile = distHtml.get().asFile
+      val swFile = listOf(swDist.get().asFile, swProcessed.get().asFile)
+        .firstOrNull { it.exists() }
+        ?: return@doLast
+      val buildId = Regex("""const APP_VERSION = '([^']+)'""")
+        .find(swFile.readText(Charsets.UTF_8))
+        ?.groupValues
+        ?.get(1)
+        ?: return@doLast
+      GenerateServiceWorkerPrecacheTask.stampIndexHtml(htmlFile, buildId)
+    }
   }
 
 // The development executable compile-sync task reads the generated service-worker
