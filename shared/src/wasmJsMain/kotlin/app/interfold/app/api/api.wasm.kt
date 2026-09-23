@@ -1,6 +1,7 @@
 package app.interfold.app.api
 
 import app.interfold.app.utils.globalSerializer
+import app.interfold.app.utils.includeCredentials
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.js.Js
 import io.ktor.client.plugins.HttpTimeout
@@ -11,6 +12,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 
 actual val client: HttpClient = HttpClient(Js) {
+  // CF_Authorization is HttpOnly. fetch attaches it only when credentials are included.
+  engine {
+    configureRequest {
+      includeCredentials()
+    }
+  }
   install(WebSockets)
   install(ContentNegotiation) {
     json(globalSerializer)
