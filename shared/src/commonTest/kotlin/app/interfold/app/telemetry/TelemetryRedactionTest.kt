@@ -74,4 +74,24 @@ class TelemetryRedactionTest {
     assertTrue(event.attributes.values.none { it.contains("eyJ") })
     ClientActivityStore.clear()
   }
+
+  @Test
+  fun replacesDomEventDumpsInMessages() {
+    assertEquals(
+      BROWSER_ERROR_EVENT,
+      sanitizeTelemetryText("[object Event]"),
+    )
+    assertEquals(
+      BROWSER_ERROR_EVENT,
+      sanitizeTelemetryText("""{"target":{},"type":"error","isTrusted":true}"""),
+    )
+    assertEquals(
+      BROWSER_ERROR_EVENT,
+      sanitizeTelemetryText("{ target :{}, type : error , isTrusted :true}"),
+    )
+    assertEquals(
+      "Connection refused",
+      sanitizeTelemetryText("Connection refused"),
+    )
+  }
 }
