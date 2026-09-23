@@ -6,6 +6,7 @@ import android.icu.text.DecimalFormat
 import android.icu.util.ULocale
 import android.os.Build
 import android.util.Log
+import io.ktor.client.HttpClientConfig
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import kotlinx.datetime.LocalDate
@@ -53,3 +54,5 @@ actual fun <T> List<T>.sortedLocaleAware(selector: (T) -> String): List<T> =
 actual fun writePlatformLog(tag: String?, message: String) {
   Log.i(tag ?: "INTERFOLD", message)
 }
+
+internal actual fun HttpClientConfig<*>.installApiOriginCredentials() = Unit

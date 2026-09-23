@@ -3,12 +3,21 @@
 package app.interfold.app.utils
 
 import androidx.compose.runtime.Composable
+import app.interfold.app.Settings
+import io.ktor.client.HttpClientConfig
+import io.ktor.client.fetch.RequestInit
+import io.ktor.client.fetchOptions
+import io.ktor.client.plugins.api.createClientPlugin
+import io.ktor.http.Url
+import kotlinx.browser.localStorage
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.format.DateTimeFormat
 import kotlinx.datetime.format.FormatStringsInDatetimeFormats
 import kotlinx.datetime.format.MonthNames
 import kotlinx.datetime.format.Padding
+import kotlin.js.ExperimentalWasmJsInterop
+import kotlin.js.toJsString
 
 @Composable
 actual fun BackHandler(enabled: Boolean, onBack: () -> Unit) = Unit
@@ -73,4 +82,42 @@ actual fun <T> List<T>.sortedLocaleAware(selector: (T) -> String): List<T> =
 
 actual fun writePlatformLog(tag: String?, message: String) {
   println("[${tag ?: "INTERFOLD"}]: $message")
+}
+
+@OptIn(ExperimentalWasmJsInterop::class)
+internal fun RequestInit.includeCredentials() {
+  credentials = "include".toJsString()
+}
+
+internal actual fun HttpClientConfig<*>.installApiOriginCredentials() {
+  install(ApiOriginCredentials)
+}
+
+private val ApiOriginCredentials = createClientPlugin("ApiOriginCredentials") {
+  onRequest { request, _ ->
+    if (request.url.build().targetsConfiguredApiOrigin()) {
+      request.fetchOptions {
+        includeCredentials()
+      }
+    }
+  }
+}
+
+private fun Url.targetsConfiguredApiOrigin(): Boolean {
+  val api = runCatching { Url(readConfiguredApiEndpoint()) }.getOrNull() ?: return false
+  return protocol == api.protocol &&
+    host.equals(api.host, ignoreCase = true) &&
+    port == api.port
+}
+
+private fun readConfiguredApiEndpoint(): String {
+  migrateLegacyWasmSettings()
+  val json = localStorage.getItem(SETTINGS_LOCALSTORAGE_KEY)
+  val endpoint = if (json.isNullOrBlank()) {
+    Settings.DEFAULT_API_ENDPOINT
+  } else {
+    runCatching { Settings.deserialize(json).apiEndpoint }
+      .getOrDefault(Settings.DEFAULT_API_ENDPOINT)
+  }
+  return endpoint.ifBlank { Settings.DEFAULT_API_ENDPOINT }
 }

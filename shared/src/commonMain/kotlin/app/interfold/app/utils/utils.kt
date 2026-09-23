@@ -8,6 +8,7 @@ import io.kamel.core.config.KamelConfig
 import io.kamel.core.config.httpUrlFetcher
 import io.kamel.core.config.takeFrom
 import io.kamel.image.config.imageBitmapDecoder
+import io.ktor.client.HttpClientConfig
 import io.ktor.client.plugins.HttpRequestRetry
 import io.ktor.http.isSuccess
 import kotlinx.datetime.LocalDate
@@ -55,6 +56,7 @@ val kamelConfig = KamelConfig {
   imageBitmapDecoder()
 
   httpUrlFetcher {
+    installApiOriginCredentials()
     httpCache(100 * 1024 * 1024 /* 100 MiB */)
 
     install(HttpRequestRetry) {
@@ -75,6 +77,7 @@ val noCacheKamelConfig = KamelConfig {
   imageBitmapDecoder()
 
   httpUrlFetcher {
+    installApiOriginCredentials()
     httpCache(0)
 
     install(HttpRequestRetry) {
@@ -95,6 +98,9 @@ fun platformLog(tag: String? = null, message: String) {
 }
 
 expect fun writePlatformLog(tag: String? = null, message: String)
+
+/** Browser image fetches include cookies only for the configured API host. */
+internal expect fun HttpClientConfig<*>.installApiOriginCredentials()
 
 val globalSerializersModule = SerializersModule {
   polymorphic(app.interfold.app.api.model.Poll::class) {
