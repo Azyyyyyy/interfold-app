@@ -159,6 +159,14 @@ self.addEventListener('install', (event) => {
   );
 });
 
+function broadcastAppVersion() {
+  return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+    clients.forEach((client) => {
+      client.postMessage({ type: 'interfold-app-version', version: APP_VERSION });
+    });
+  });
+}
+
 self.addEventListener('activate', (event) => {
   console.log('[SW] Activate - clearing old caches + ensuring Firebase');
   event.waitUntil(
@@ -170,8 +178,17 @@ self.addEventListener('activate', (event) => {
         })
       )),
       ensureFirebaseInitialized().catch(() => false)
-    ]).then(() => self.clients.claim())
+    ]).then(() => self.clients.claim()).then(() => broadcastAppVersion())
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'interfold-app-version-request') {
+    const source = event.source;
+    if (source) {
+      source.postMessage({ type: 'interfold-app-version', version: APP_VERSION });
+    }
+  }
 });
 
 function fetchAndCache(request) {
@@ -183,6 +200,27 @@ function fetchAndCache(request) {
       return response;
     }).catch(() =>
       caches.match(request).then((cached) => cached || new Response('', { status: 503, statusText: 'Service Unavailable' }))
+    )
+  );
+}
+
+function fetchNetworkFirst(request, cacheKey) {
+  const key = cacheKey || request;
+  return fetch(request, { cache: 'no-cache' }).then((networkResp) => {
+    if (networkResp && networkResp.status === 200) {
+      return caches.open(CACHE_NAME).then((cache) => {
+        try {
+          cache.put(key, networkResp.clone());
+        } catch (e) {
+          // ignore cache put failures
+        }
+        return networkResp;
+      });
+    }
+    return networkResp;
+  }).catch(() =>
+    caches.match(key).then((cached) =>
+      cached || new Response('', { status: 503, statusText: 'Service Unavailable' })
     )
   );
 }
@@ -202,33 +240,33 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation requests - network-first so we get updated app shell
+  // Navigation requests - network-first so we get an updated app shell
   if (req.mode === 'navigate') {
-    event.respondWith(
-      fetch(req).then((networkResp) => {
-        return caches.open(CACHE_NAME).then((cache) => {
-          try {
-            cache.put('/index.html', networkResp.clone());
-          } catch (e) {
-            // ignore cache put failures
-          }
-          return networkResp;
-        });
-      }).catch(() => caches.match('/index.html'))
-    );
+    event.respondWith(fetchNetworkFirst(req, '/index.html'));
     return;
   }
 
-  // Assets (JS, WASM, CSS, images) - stale-while-revalidate: serve cache immediately, update in background
-  const isAsset = req.destination === 'script' ||
-                  req.destination === 'style' ||
-                  req.destination === 'image' ||
-                  req.url.endsWith('.wasm') ||
-                  req.url.endsWith('.js') ||
-                  req.url.endsWith('.css') ||
-                  req.url.includes('/lib/');
+  const pathname = url.pathname;
+  const isAppBinary = req.destination === 'script' ||
+                      pathname.endsWith('.wasm') ||
+                      pathname.endsWith('.js') ||
+                      pathname.endsWith('.mjs');
 
-  if (isAsset) {
+  // JS / WASM must not be served cache-first: interfold-app.js is unhashed
+  // and an old cached loader would pull an old wasm blob with it.
+  if (isAppBinary) {
+    event.respondWith(fetchNetworkFirst(req));
+    return;
+  }
+
+  // Images, fonts, CSS - stale-while-revalidate
+  const isStaticAsset = req.destination === 'style' ||
+                        req.destination === 'image' ||
+                        req.destination === 'font' ||
+                        pathname.endsWith('.css') ||
+                        pathname.includes('/lib/');
+
+  if (isStaticAsset) {
     event.respondWith(
       caches.match(req).then((cachedResp) => {
         const networkFetch = fetch(req).then((networkResp) => {

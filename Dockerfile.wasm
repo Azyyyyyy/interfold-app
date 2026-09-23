@@ -59,9 +59,30 @@ server {
     listen       [::]:8080;
     server_name  localhost;
 
+    root   /usr/share/nginx/html;
+    index  index.html index.htm;
+
+    # Unhashed files that change every build. `no-cache` forces revalidation
+    # so a previous SW / HTTP cache cannot keep serving an old byte-identical
+    # copy of the worker or the JS loader.
+    location = /service-worker.js {
+        add_header Cache-Control "no-cache";
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+    }
+
+    location = /interfold-app.js {
+        add_header Cache-Control "no-cache";
+    }
+
+    # Content-hashed Kotlin/Wasm blobs (e.g. 5d9ec0de….wasm).
+    location ~* \.wasm$ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
     location / {
-        root       /usr/share/nginx/html;
-        index      index.html index.htm;
         # SPA fallback for OAuth redirect routes owned by the client
         # (/auth/token, /link_success/*). Query string is preserved.
         try_files  $uri $uri/ /index.html;
