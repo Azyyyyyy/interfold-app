@@ -12,7 +12,6 @@ import app.interfold.app.ui.registerStateHandler
 import app.interfold.app.ui.retainStateHandler
 import app.interfold.app.utils.ColorSchemeParams
 import app.interfold.app.utils.DevicePlatform
-import app.interfold.app.utils.ExitApplicationType
 import app.interfold.app.utils.WebURLOpenBehavior
 import app.interfold.app.utils.buildRedirectUri
 import app.interfold.app.utils.ioDispatcher
@@ -47,26 +46,18 @@ interface LoginComponent {
   fun logInWithApple(colorSchemeParams: ColorSchemeParams)
   fun logInWithCloudflare(colorSchemeParams: ColorSchemeParams)
 
-  fun incrementDirectTokenLoginTimesPressed()
-  fun closeDirectTokenDialog()
-  fun logInWithDirectToken(token: String)
-
   fun updateServerUrl(url: String)
   fun checkServerHealth()
   fun fetchLoginMethods()
 
   @Serializable
   data class Model(
-    val directTokenTimesPressed: Int = 0,
-    val directTokenDialogOpen: Boolean = false,
     val serverUrl: String = "",
     val serverHealthStatus: ServerHealthStatus = ServerHealthStatus.UNKNOWN,
     val loginMethods: LoginMethods = LoginMethods(),
     val loginMethodsStatus: LoginMethodsStatus = LoginMethodsStatus.Idle,
   )
 }
-
-private const val DIRECT_TOKEN_PRESSES_REQUIRED = 5
 
 internal data class HealthCheckResult(val readyUp: Boolean, val liveUp: Boolean)
 
@@ -226,36 +217,6 @@ internal class LoginComponentImpl(
         loginMethodsStatus = LoginMethodsStatus.Failed,
       )
     )
-  }
-
-  override fun incrementDirectTokenLoginTimesPressed() {
-    if (model.value.directTokenTimesPressed >= DIRECT_TOKEN_PRESSES_REQUIRED - 1) {
-      model.tryEmit(
-        model.value.copy(
-          directTokenTimesPressed = 0,
-          directTokenDialogOpen = true
-        )
-      )
-    } else {
-      model.tryEmit(
-        model.value.copy(
-          directTokenTimesPressed = model.value.directTokenTimesPressed + 1,
-        )
-      )
-    }
-  }
-
-  override fun closeDirectTokenDialog() {
-    model.tryEmit(
-      model.value.copy(
-        directTokenDialogOpen = false
-      )
-    )
-  }
-
-  override fun logInWithDirectToken(token: String) {
-    settings.setToken(token = token)
-    platformUtilities.exitApplication(ExitApplicationType.ForcedRestart)
   }
 }
 
