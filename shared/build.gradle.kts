@@ -78,6 +78,9 @@ kotlin {
         }
       }
     }
+    // Kotlin 2.4.20 / webpack 5.108: jose 6 uses import.meta; ES module
+    // output keeps Karma from treating the test bundle as a classic script.
+    useEsModules()
   }
 
   applyDefaultHierarchyTemplate()
