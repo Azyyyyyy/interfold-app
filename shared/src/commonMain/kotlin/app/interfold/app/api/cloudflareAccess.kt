@@ -1,10 +1,12 @@
 package app.interfold.app.api
 
 import io.ktor.client.HttpClientConfig
+import io.ktor.client.plugins.api.createClientPlugin
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.http.HeadersBuilder
 import io.ktor.http.HttpHeaders
+import io.ktor.http.Url
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -39,12 +41,19 @@ object CloudflareAccessCredentials {
   var accessJwt: String? = null
     private set
 
+  /** Configured instance origin. Used so image fetches do not leak the JWT off-host. */
+  @Volatile
+  var apiEndpoint: String? = null
+    private set
+
   fun update(
     jwt: String?,
     nearExpirySkewMinutes: Int = DEFAULT_NEAR_EXPIRY_SKEW_MINUTES,
+    apiEndpoint: String? = this.apiEndpoint,
   ) {
     accessJwt = jwt?.takeIf { it.isNotBlank() }
     nearExpirySkew = nearExpirySkewMinutes.coerceAtLeast(1).minutes
+    this.apiEndpoint = apiEndpoint?.trim()?.trimEnd('/')?.takeIf { it.isNotBlank() }
   }
 }
 
@@ -77,6 +86,37 @@ fun HttpClientConfig<*>.installCloudflareAccessHeaders() {
   defaultRequest {
     applyCloudflareAccessHeaders(headers)
   }
+}
+
+/**
+ * Same headers as [installCloudflareAccessHeaders], but only when the request
+ * targets the configured API origin. Kamel also loads third-party images
+ * (stealth-mode articles); those must not receive the Access JWT.
+ */
+fun HttpClientConfig<*>.installCloudflareAccessHeadersForApiOrigin() {
+  install(CloudflareAccessApiOriginPlugin)
+}
+
+private val CloudflareAccessApiOriginPlugin = createClientPlugin("CloudflareAccessApiOrigin") {
+  onRequest { request, _ ->
+    if (targetsConfiguredApiOrigin(request.url.build())) {
+      applyCloudflareAccessHeaders(request.headers)
+    }
+  }
+}
+
+fun targetsConfiguredApiOrigin(
+  requestUrl: Url,
+  apiEndpoint: String? = CloudflareAccessCredentials.apiEndpoint,
+): Boolean {
+  val api = apiEndpoint
+    ?.trim()
+    ?.takeIf { it.isNotBlank() }
+    ?.let { runCatching { Url(it) }.getOrNull() }
+    ?: return false
+  return requestUrl.protocol.name.equals(api.protocol.name, ignoreCase = true) &&
+    requestUrl.host.equals(api.host, ignoreCase = true) &&
+    requestUrl.port == api.port
 }
 
 /**
