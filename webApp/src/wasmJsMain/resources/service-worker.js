@@ -133,6 +133,70 @@ self.addEventListener('notificationclick', (event) => {
 // -----------------------------------------------------------------------------
 // Offline caching lifecycle
 // -----------------------------------------------------------------------------
+// Reloading the last tab promotes a waiting worker without SKIP_WAITING.
+// Until Reload is posted we keep serving the previously pinned app cache so
+// dismiss + refresh does not swap JS/WASM. see decideServingCache
+
+const APP_CACHE_PREFIX = 'interfold-app-cache-';
+const SW_META_CACHE = 'interfold-sw-meta-v1';
+const SERVING_CACHE_KEY = '/__serving-cache-name';
+const APPLY_KEY = '/__apply-update-version';
+
+let servingCacheName = CACHE_NAME;
+
+function openMetaCache() {
+  return caches.open(SW_META_CACHE);
+}
+
+async function readMeta(key) {
+  const cache = await openMetaCache();
+  const resp = await cache.match(key);
+  return resp ? resp.text() : '';
+}
+
+async function writeMeta(key, value) {
+  const cache = await openMetaCache();
+  await cache.put(key, new Response(value, { headers: { 'content-type': 'text/plain' } }));
+}
+
+function isReservedCache(name) {
+  return name === FIREBASE_CONFIG_CACHE || name === SW_META_CACHE;
+}
+
+async function resolvePreviousServingCache(previous) {
+  const pinned = await readMeta(SERVING_CACHE_KEY);
+  if (pinned && previous.includes(pinned)) return pinned;
+  for (const name of previous) {
+    const cache = await caches.open(name);
+    if (await cache.match('/index.html') || await cache.match('/interfold-app.js')) {
+      return name;
+    }
+  }
+  return previous[0];
+}
+
+async function applyUpdateNow() {
+  servingCacheName = CACHE_NAME;
+  await writeMeta(SERVING_CACHE_KEY, CACHE_NAME);
+  const keys = await caches.keys();
+  await Promise.all(keys.map((key) => {
+    if (key !== CACHE_NAME && !isReservedCache(key)) return caches.delete(key);
+    return null;
+  }));
+  await openMetaCache().then((cache) => cache.delete(APPLY_KEY));
+}
+
+async function decideServingCache() {
+  const applyVersion = await readMeta(APPLY_KEY);
+  const keys = await caches.keys();
+  const previous = keys.filter((key) => key.startsWith(APP_CACHE_PREFIX) && key !== CACHE_NAME);
+  if (applyVersion === APP_VERSION || previous.length === 0) {
+    await applyUpdateNow();
+    return;
+  }
+  servingCacheName = await resolvePreviousServingCache(previous);
+  await writeMeta(SERVING_CACHE_KEY, servingCacheName);
+}
 
 self.addEventListener('install', (event) => {
   console.log('[SW] Install - precaching + Firebase init');
@@ -171,15 +235,10 @@ function broadcastAppVersion() {
 }
 
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activate - clearing old caches + ensuring Firebase');
+  console.log('[SW] Activate - decide serving cache + ensuring Firebase');
   event.waitUntil(
     Promise.all([
-      caches.keys().then((keys) => Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME && key !== FIREBASE_CONFIG_CACHE) return caches.delete(key);
-          return null;
-        })
-      )),
+      decideServingCache(),
       ensureFirebaseInitialized().catch(() => false)
     ]).then(() => self.clients.claim()).then(() => broadcastAppVersion())
   );
@@ -188,7 +247,11 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('message', (event) => {
   if (!event.data) return;
   if (event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
+    event.waitUntil((async () => {
+      await writeMeta(APPLY_KEY, APP_VERSION);
+      await applyUpdateNow();
+      await self.skipWaiting();
+    })());
     return;
   }
   if (event.data.type === 'interfold-app-version-request') {
@@ -199,37 +262,47 @@ self.addEventListener('message', (event) => {
   }
 });
 
+function pinnedToPreviousBuild() {
+  return servingCacheName !== CACHE_NAME;
+}
+
 function fetchAndCache(request) {
-  return caches.open(CACHE_NAME).then((cache) =>
-    fetch(request).then((response) => {
-      if (response && response.status === 200) {
-        cache.put(request, response.clone());
+  return caches.open(servingCacheName).then((cache) =>
+    cache.match(request).then((cached) => {
+      if (cached) return cached;
+      if (pinnedToPreviousBuild()) {
+        return new Response('', { status: 503, statusText: 'Service Unavailable' });
       }
-      return response;
-    }).catch(() =>
-      caches.match(request).then((cached) => cached || new Response('', { status: 503, statusText: 'Service Unavailable' }))
-    )
+      return fetch(request).then((response) => {
+        if (response && response.status === 200) {
+          cache.put(request, response.clone());
+        }
+        return response;
+      }).catch(() => new Response('', { status: 503, statusText: 'Service Unavailable' }));
+    })
   );
 }
 
 function fetchCacheFirst(request, cacheKey) {
   const key = cacheKey || request;
-  return caches.match(key).then((cached) => {
-    if (cached) return cached;
-    return fetch(request).then((networkResp) => {
-      if (networkResp && networkResp.status === 200) {
-        return caches.open(CACHE_NAME).then((cache) => {
+  return caches.open(servingCacheName).then((cache) =>
+    cache.match(key).then((cached) => {
+      if (cached) return cached;
+      if (pinnedToPreviousBuild()) {
+        return new Response('', { status: 503, statusText: 'Service Unavailable' });
+      }
+      return fetch(request).then((networkResp) => {
+        if (networkResp && networkResp.status === 200) {
           try {
             cache.put(key, networkResp.clone());
           } catch (e) {
             // ignore cache put failures
           }
-          return networkResp;
-        });
-      }
-      return networkResp;
-    }).catch(() => new Response('', { status: 503, statusText: 'Service Unavailable' }));
-  });
+        }
+        return networkResp;
+      }).catch(() => new Response('', { status: 503, statusText: 'Service Unavailable' }));
+    })
+  );
 }
 
 self.addEventListener('fetch', (event) => {
@@ -254,8 +327,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // App shell stays cache-first so a refresh cannot apply a waiting
-  // worker's new HTML/JS until the user posts SKIP_WAITING.
+  // App shell comes from the pinned serving cache. A last-tab reload
+  // activates this worker; without SKIP_WAITING that pin stays the
+  // previous build so dismiss does not apply JS/WASM.
   if (req.mode === 'navigate') {
     event.respondWith(fetchCacheFirst(req, '/index.html'));
     return;
@@ -281,19 +355,25 @@ self.addEventListener('fetch', (event) => {
 
   if (isStaticAsset) {
     event.respondWith(
-      caches.match(req).then((cachedResp) => {
-        const networkFetch = fetch(req).then((networkResp) => {
-          if (networkResp && networkResp.status === 200) {
-            return caches.open(CACHE_NAME).then((cache) => {
-              cache.put(req, networkResp.clone());
-              return networkResp;
-            });
+      caches.open(servingCacheName).then((cache) =>
+        cache.match(req).then((cachedResp) => {
+          if (pinnedToPreviousBuild()) {
+            return cachedResp || fetch(req).catch(() =>
+              new Response('', { status: 503, statusText: 'Service Unavailable' })
+            );
           }
-          return networkResp;
-        }).catch(() => caches.match(req)).then((resp) => resp || new Response('', { status: 503, statusText: 'Service Unavailable' }));
-        event.waitUntil(networkFetch);
-        return cachedResp || networkFetch;
-      })
+          const networkFetch = fetch(req).then((networkResp) => {
+            if (networkResp && networkResp.status === 200) {
+              cache.put(req, networkResp.clone());
+            }
+            return networkResp;
+          }).catch(() => cache.match(req)).then((resp) =>
+            resp || new Response('', { status: 503, statusText: 'Service Unavailable' })
+          );
+          event.waitUntil(networkFetch);
+          return cachedResp || networkFetch;
+        })
+      )
     );
     return;
   }
