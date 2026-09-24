@@ -218,7 +218,10 @@ fun JournalEntryViewScreen(
           exit = fadeOut(effectsSpec())
         ) {
           FloatingActionButton(
-            onClick = { isEditing = false },
+            onClick = {
+              isEditing = false
+              component.commit()
+            },
           ) {
             Icon(
               imageVector = Icons.Rounded.Done,
