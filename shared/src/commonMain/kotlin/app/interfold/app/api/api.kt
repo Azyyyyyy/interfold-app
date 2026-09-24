@@ -382,7 +382,9 @@ internal class KotlixPhoenixSocketSession(
     scope = coroutineScope,
     transport = { url, socketFlow, decode ->
       connectAttemptAtMillis = kotlin.time.Clock.System.now().toEpochMilliseconds()
-      KtorWebSocketTransport(url, socketFlow, decode)
+      KtorWebSocketTransport(url, socketFlow, decode, client) {
+        applyCloudflareAccessHeaders()
+      }
     }
   ).apply {
     logger = if (BuildConfig.isDebug()) {
@@ -529,12 +531,10 @@ internal fun parseChannelMessage(
 
 val httpBuilder: (token: String?, body: Any?) -> (HttpRequestBuilder.() -> Unit) = { token, body ->
   {
+    applyCloudflareAccessHeaders()
     headers {
       if (token != null) {
         header("Authorization", "Bearer $token")
-      }
-      CloudflareAccessCredentials.accessJwt?.let { accessJwt ->
-        header(CloudflareAccessCredentials.JWT_ASSERTION_HEADER, accessJwt)
       }
       if (body != null && body !is MultiPartFormDataContent) {
         header("Content-Type", "application/json")

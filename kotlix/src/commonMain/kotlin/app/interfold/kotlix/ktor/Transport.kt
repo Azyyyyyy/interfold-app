@@ -7,6 +7,7 @@ import app.interfold.kotlix.Transport
 import app.interfold.kotlix.WebSocketTransportCommon
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.webSocketSession
+import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.url
 import io.ktor.http.Url
 import io.ktor.websocket.CloseReason
@@ -26,7 +27,8 @@ class KtorWebSocketTransport(
   private val url: Url,
   private val socketFlow: SocketFlow,
   val decode: DecodeClosure,
-  private val client: HttpClient = buildWebsocketHttpClient()
+  private val client: HttpClient = buildWebsocketHttpClient(),
+  private val configureRequest: HttpRequestBuilder.() -> Unit = {},
 ) : WebSocketTransportCommon() {
 
   private var session: WebSocketSession? = null
@@ -39,8 +41,10 @@ class KtorWebSocketTransport(
       try {
         session = client.webSocketSession {
           url(this@KtorWebSocketTransport.url)
-          // Cf-Access-Jwt-Assertion (and other defaults) come from the shared
-          // HttpClient's defaultRequest when Access is enabled.
+          // Native engines (OkHttp / Darwin) do not send the browser cookie
+          // jar. Callers attach CF_Authorization / Cf-Access-Jwt-Assertion
+          // here (and via the shared client's defaultRequest).
+          configureRequest()
         }
         readyState = Transport.ReadyState.OPEN
         socketFlow.tryEmit(SocketEvent.OpenEvent(wasReconnect = isReconnect))

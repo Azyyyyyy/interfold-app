@@ -103,6 +103,29 @@ class CloudflareAccessTest {
       "access-token-value",
       builder.headers[CloudflareAccessCredentials.JWT_ASSERTION_HEADER],
     )
+    assertEquals(
+      "${CloudflareAccessCredentials.COOKIE_NAME}=access-token-value",
+      builder.headers[HttpHeaders.Cookie],
+    )
+  }
+
+  @Test
+  fun applyCloudflareAccessHeaders_attachesAssertionAndCookieOnce() {
+    CloudflareAccessCredentials.update("access-token-value")
+    val builder = HttpRequestBuilder()
+    builder.applyCloudflareAccessHeaders()
+    builder.applyCloudflareAccessHeaders()
+
+    assertEquals(
+      "access-token-value",
+      builder.headers[CloudflareAccessCredentials.JWT_ASSERTION_HEADER],
+    )
+    assertEquals(
+      "${CloudflareAccessCredentials.COOKIE_NAME}=access-token-value",
+      builder.headers[HttpHeaders.Cookie],
+    )
+    assertEquals(1, builder.headers.getAll(CloudflareAccessCredentials.JWT_ASSERTION_HEADER)?.size)
+    assertEquals(1, builder.headers.getAll(HttpHeaders.Cookie)?.size)
   }
 
   @Test
@@ -112,6 +135,7 @@ class CloudflareAccessTest {
     httpBuilder(null, null).invoke(builder)
     assertNull(builder.headers[CloudflareAccessCredentials.JWT_ASSERTION_HEADER])
     assertNull(builder.headers[HttpHeaders.Authorization])
+    assertNull(builder.headers[HttpHeaders.Cookie])
   }
 
   @Test

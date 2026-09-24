@@ -2,7 +2,9 @@ package app.interfold.app.api
 
 import io.ktor.client.HttpClientConfig
 import io.ktor.client.plugins.defaultRequest
-import io.ktor.client.request.header
+import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.http.HeadersBuilder
+import io.ktor.http.HttpHeaders
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -46,11 +48,34 @@ object CloudflareAccessCredentials {
   }
 }
 
+/**
+ * Attaches the stored Access application JWT for edge auth.
+ *
+ * Access authenticates non-browser clients on the `CF_Authorization` cookie
+ * (browsers send it automatically). `Cf-Access-Jwt-Assertion` is kept as well
+ * because that is the header Cloudflare forwards to the origin after a
+ * successful Access check, and some setups accept the same JWT there.
+ */
+fun applyCloudflareAccessHeaders(headers: HeadersBuilder) {
+  val jwt = CloudflareAccessCredentials.accessJwt ?: return
+  if (headers[CloudflareAccessCredentials.JWT_ASSERTION_HEADER].isNullOrBlank()) {
+    headers.append(CloudflareAccessCredentials.JWT_ASSERTION_HEADER, jwt)
+  }
+  val existingCookie = headers[HttpHeaders.Cookie]
+  if (existingCookie.isNullOrBlank()) {
+    headers.append(HttpHeaders.Cookie, "${CloudflareAccessCredentials.COOKIE_NAME}=$jwt")
+  } else if (!existingCookie.contains(CloudflareAccessCredentials.COOKIE_NAME, ignoreCase = true)) {
+    headers[HttpHeaders.Cookie] = "$existingCookie; ${CloudflareAccessCredentials.COOKIE_NAME}=$jwt"
+  }
+}
+
+fun HttpRequestBuilder.applyCloudflareAccessHeaders() {
+  applyCloudflareAccessHeaders(headers)
+}
+
 fun HttpClientConfig<*>.installCloudflareAccessHeaders() {
   defaultRequest {
-    CloudflareAccessCredentials.accessJwt?.let { jwt ->
-      header(CloudflareAccessCredentials.JWT_ASSERTION_HEADER, jwt)
-    }
+    applyCloudflareAccessHeaders(headers)
   }
 }
 
