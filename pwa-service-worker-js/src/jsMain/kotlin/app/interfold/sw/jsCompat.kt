@@ -31,10 +31,6 @@ internal fun cachesMatch(request: dynamic): Promise<dynamic> = js("caches.match(
 internal fun fetchRaw(request: dynamic): Promise<dynamic> = js("fetch(request)")
 
 @Suppress("UNUSED_PARAMETER")
-internal fun fetchNoStore(request: dynamic): Promise<dynamic> =
-  js("fetch(request, { cache: 'no-store' })")
-
-@Suppress("UNUSED_PARAMETER")
 internal fun fetchOmitCreds(url: String): Promise<dynamic> =
   js("fetch(url, { credentials: 'omit' })")
 

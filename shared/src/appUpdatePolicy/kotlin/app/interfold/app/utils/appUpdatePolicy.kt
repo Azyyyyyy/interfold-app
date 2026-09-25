@@ -79,6 +79,29 @@ object AppUpdatePolicy {
     return servingCacheName == currentCacheName
   }
 
+  /**
+   * Activate does not re-run when the browser kills an idle worker.
+   * Re-read the pin so a restart does not treat [currentCacheName] as
+   * serving and fetch JS/WASM (Cloudflare Access 302s that SW fetch).
+   */
+  fun servingCacheOnWorkerStart(
+    currentCacheName: String,
+    pinnedCacheName: String?,
+    availableCacheNames: List<String>,
+  ): String {
+    if (pinnedCacheName != null && pinnedCacheName in availableCacheNames) {
+      return pinnedCacheName
+    }
+    return currentCacheName
+  }
+
+  /** Browser must fetch these; a SW [fetch] is unauthenticated to Access. */
+  fun isBrowserCredentialedPath(pathname: String): Boolean {
+    return pathname == "/service-worker.js" ||
+      pathname == "/interfold-sw.js" ||
+      pathname == "/runtime-config.js"
+  }
+
   fun isReservedCache(name: String): Boolean {
     return name == FIREBASE_CONFIG_CACHE || name == SW_META_CACHE
   }

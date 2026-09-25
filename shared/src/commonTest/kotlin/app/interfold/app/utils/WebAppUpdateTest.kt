@@ -132,6 +132,37 @@ class WebAppUpdateTest {
   }
 
   @Test
+  fun workerRestartReusesPinnedCacheSoAppBinariesStayOffTheNetwork() {
+    val serving = AppUpdatePolicy.servingCacheOnWorkerStart(
+      currentCacheName = incomingCache,
+      pinnedCacheName = runningCache,
+      availableCacheNames = listOf(runningCache, incomingCache),
+    )
+    assertEquals(runningCache, serving)
+    assertFalse(AppUpdatePolicy.mayFetchAppBinaryFromNetwork(serving, incomingCache))
+  }
+
+  @Test
+  fun workerRestartWithoutPinServesCurrentCache() {
+    assertEquals(
+      incomingCache,
+      AppUpdatePolicy.servingCacheOnWorkerStart(
+        currentCacheName = incomingCache,
+        pinnedCacheName = null,
+        availableCacheNames = listOf(incomingCache),
+      ),
+    )
+  }
+
+  @Test
+  fun accessSensitivePathsBypassTheServiceWorkerFetch() {
+    assertTrue(AppUpdatePolicy.isBrowserCredentialedPath("/runtime-config.js"))
+    assertTrue(AppUpdatePolicy.isBrowserCredentialedPath("/interfold-sw.js"))
+    assertTrue(AppUpdatePolicy.isBrowserCredentialedPath("/service-worker.js"))
+    assertFalse(AppUpdatePolicy.isBrowserCredentialedPath("/interfold-app.js"))
+  }
+
+  @Test
   fun laterIncomingVersionShowsNoticeAgainAfterPreviousDismiss() {
     val session = AppUpdateSession(running)
     session.onIncomingVersion(incoming)
