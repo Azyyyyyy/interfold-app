@@ -39,6 +39,6 @@ actual fun cropImageNatively(
 
 actual suspend fun ImageBitmap.compress(): ByteArray {
   val image = Image.makeFromBitmap(this.asSkiaBitmap())
-  return image.encodeToData(EncodedImageFormat.WEBP, 100)?.bytes
+  return image.encodeToData(EncodedImageFormat.WEBP, AVATAR_WEBP_QUALITY)?.bytes
     ?: throw IllegalStateException("Failed to encode desktop image to WebP")
 }

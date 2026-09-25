@@ -139,7 +139,7 @@ interface ApiInterface {
   fun deleteAlter(alterID: Int)
   fun loadAlter(alterID: Int)
   fun setAlterPinned(alterID: Int, pinned: Boolean)
-  fun setAlterAvatar(alterID: Int, bytes: ByteArray, fileName: String): Any
+  suspend fun setAlterAvatar(alterID: Int, bytes: ByteArray, fileName: String): Boolean
   fun removeAlterAvatar(alterID: Int)
 
   /* --------------- FRIENDS --------------- */
@@ -211,7 +211,7 @@ interface ApiInterface {
 
   fun updateUsername(username: String)
   fun updateDescription(description: String?)
-  fun setSystemAvatar(bytes: ByteArray, fileName: String)
+  suspend fun setSystemAvatar(bytes: ByteArray, fileName: String): Boolean
   fun removeSystemAvatar()
 
   fun importSP(spToken: String, recoveryCode: String? = null)
@@ -1261,11 +1261,9 @@ internal class ApiInterfaceImpl(
       )
     )
 
-  override fun setAlterAvatar(alterID: Int, bytes: ByteArray, fileName: String) =
-    launchIO {
-      runRawHttp {
-        app.interfold.app.api.setAlterAvatar(apiEndpoint, token.value, alterID, bytes, fileName)
-      }
+  override suspend fun setAlterAvatar(alterID: Int, bytes: ByteArray, fileName: String): Boolean =
+    runRawHttp {
+      app.interfold.app.api.setAlterAvatar(apiEndpoint, token.value, alterID, bytes, fileName)
     }
 
   override fun removeAlterAvatar(alterID: Int) =
@@ -1782,13 +1780,10 @@ internal class ApiInterfaceImpl(
     )
   }
 
-  override fun setSystemAvatar(bytes: ByteArray, fileName: String) {
-    launchIO {
-      runRawHttp {
-        app.interfold.app.api.setSystemAvatar(apiEndpoint, token.value, bytes, fileName)
-      }
+  override suspend fun setSystemAvatar(bytes: ByteArray, fileName: String): Boolean =
+    runRawHttp {
+      app.interfold.app.api.setSystemAvatar(apiEndpoint, token.value, bytes, fileName)
     }
-  }
 
   override fun removeSystemAvatar() =
     sendAPIRequest(
@@ -1899,32 +1894,34 @@ internal class ApiInterfaceImpl(
       block()
     }
 
-  private suspend fun runRawHttp(block: suspend () -> HttpResponse) {
-    try {
+  private suspend fun runRawHttp(block: suspend () -> HttpResponse): Boolean {
+    return try {
       block().emitError()
     } catch (e: CancellationException) {
       throw e
     } catch (e: Exception) {
       _errorFlow.emit(e.message ?: "Request failed")
+      false
     }
   }
 
-  private suspend fun HttpResponse.emitError(): HttpResponse {
+  private suspend fun HttpResponse.emitError(): Boolean {
     val location = headers[HttpHeaders.Location]
-    if (!isCompletedHttpWrite(status.value, location)) {
-      val raw = runCatching { bodyAsText() }.getOrNull()
-      if (looksLikeCloudflareAccessChallenge(status.value, location, raw)) {
-        _errorFlow.emit("Cloudflare Access blocked this request. Try signing in again.")
-        return this
-      }
-      val message = raw
-        ?.let {
-          runCatching { globalSerializer.decodeFromString<APIResponse<JsonElement?>>(it) }.getOrNull()?.error
-        }
-        ?: "Request failed (${status.value})"
-      _errorFlow.emit(message)
+    if (isCompletedHttpWrite(status.value, location)) {
+      return true
     }
-    return this
+    val raw = runCatching { bodyAsText() }.getOrNull()
+    if (looksLikeCloudflareAccessChallenge(status.value, location, raw)) {
+      _errorFlow.emit("Cloudflare Access blocked this request. Try signing in again.")
+      return false
+    }
+    val message = raw
+      ?.let {
+        runCatching { globalSerializer.decodeFromString<APIResponse<JsonElement?>>(it) }.getOrNull()?.error
+      }
+      ?: "Request failed (${status.value})"
+    _errorFlow.emit(message)
+    return false
   }
 
   inline fun <reified ResponseType> responseFromAdapterMessage(message: String): Pair<Boolean, APIResponse<ResponseType>> {

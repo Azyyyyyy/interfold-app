@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.Card
@@ -83,6 +84,7 @@ import interfoldapp.shared.resources.alter_count
 import interfoldapp.shared.resources.count_does_not_include_untracked
 import interfoldapp.shared.resources.description
 import interfoldapp.shared.resources.error_loading_avatar
+import interfoldapp.shared.resources.error_uploading_avatar
 import interfoldapp.shared.resources.id
 import interfoldapp.shared.resources.name_avatar
 import interfoldapp.shared.resources.no_avatar
@@ -187,9 +189,14 @@ private fun ProfileRoot(
   LaunchedEffect(selectedImage?.value) {
     if (selectedImage?.value != null) {
       avatarState = AvatarState.Preparing
-      val bytes = imageCropper.getCompressedImage()
+      val bytes = runCatching { imageCropper.getCompressedImage() }.getOrElse {
+        avatarState = AvatarState.Error
+        return@LaunchedEffect
+      }
       avatarState = AvatarState.Loading
-      component.setSystemAvatar(bytes, "avatar.webp")
+      if (!component.setSystemAvatar(bytes, "avatar.webp")) {
+        avatarState = AvatarState.Error
+      }
     }
   }
 
@@ -217,8 +224,12 @@ private fun ProfileRoot(
                 avatarState = AvatarState.Preparing
               },
               onImageReady = { bytes ->
-                avatarState = AvatarState.Loading
-                component.setSystemAvatar(bytes, "avatar.webp")
+                coroutineScope.launch {
+                  avatarState = AvatarState.Loading
+                  if (!component.setSystemAvatar(bytes, "avatar.webp")) {
+                    avatarState = AvatarState.Error
+                  }
+                }
               },
               onCanceled = {
                 avatarState = AvatarState.Loaded
@@ -272,7 +283,7 @@ private fun ProfileRoot(
               contentAlignment = Alignment.Center
             ) {
               when {
-                avatarState != AvatarState.Loaded -> {
+                avatarState == AvatarState.Preparing || avatarState == AvatarState.Loading -> {
                   Box(
                     modifier = Modifier.fillMaxSize().background(
                       MaterialTheme.colorScheme.surfaceContainerHigh
@@ -286,6 +297,31 @@ private fun ProfileRoot(
                       },
                       modifier = Modifier.fillMaxWidth()
                     )
+                  }
+                }
+
+                avatarState == AvatarState.Error -> {
+                  Box(
+                    modifier = Modifier.fillMaxSize().background(
+                      MaterialTheme.colorScheme.surfaceContainerHigh
+                    ),
+                    contentAlignment = Alignment.Center
+                  ) {
+                    Column(
+                      modifier = Modifier.fillMaxWidth().padding(16.dp),
+                      horizontalAlignment = Alignment.CenterHorizontally,
+                      verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                      Icon(
+                        imageVector = Icons.Rounded.ErrorOutline,
+                        modifier = Modifier.size(48.dp),
+                        contentDescription = Res.string.error_uploading_avatar.compose
+                      )
+                      Text(
+                        Res.string.error_uploading_avatar.compose,
+                        style = MaterialTheme.typography.labelLarge
+                      )
+                    }
                   }
                 }
 

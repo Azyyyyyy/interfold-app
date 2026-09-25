@@ -198,6 +198,7 @@
     <string name="edit_field">Edit field</string>
 
     <string name="error_loading_avatar">Error loading avatar!</string>
+    <string name="error_uploading_avatar">Couldn't upload avatar. Tap to try again.</string>
     <string name="error_saving_alter">Error saving alter!</string>
     <string name="error_saving_tag">Error saving tag!</string>
     <string name="error_saving_journal_entry">Error saving journal entry!</string>
