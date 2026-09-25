@@ -264,10 +264,16 @@ tasks.matching { it.name == "wasmJsDevelopmentExecutableCompileSync" }
     dependsOn(generateServiceWorkerPrecache)
   }
 
-// NOTE: do not create a compile-sync -> generateServiceWorkerPrecache dependency
-// because it can produce a circular dependency with webpack tasks. The
-// generator is instead wired to run after webpack via `finalizedBy` above and
-// should depend on copy tasks if additional ordering is required.
+// Production compile-sync also reads processedResources/wasmJs/main, where
+// copyInterfoldSwJs writes interfold-sw.js. Without this, Gradle 9 fails
+// :webApp:wasmJsBrowserDistribution (the Docker image build) with an
+// implicit-dependency error.
+// Do not route this through generateServiceWorkerPrecache: that task is
+// finalizedBy webpack, and compile-sync -> generator can cycle.
+tasks.matching { it.name == "wasmJsProductionExecutableCompileSync" }
+  .configureEach {
+    dependsOn(copyInterfoldSwJs)
+  }
 
 // Prevent Kotlin's generated process resources Copy task from copying the
 // source `service-worker.js` into processedResources, which would overwrite
