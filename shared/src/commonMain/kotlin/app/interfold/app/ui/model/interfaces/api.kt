@@ -36,6 +36,7 @@ import app.interfold.app.api.toState
 import app.interfold.app.ui.compose.screens.main.hometabs.FrontHistoryItem
 import app.interfold.app.telemetry.ActivityStatus
 import app.interfold.app.telemetry.Telemetry
+import app.interfold.app.telemetry.exceptionActivityAttributes
 import app.interfold.app.utils.MonthYearPair
 import app.interfold.app.utils.PlatformUtilities
 import app.interfold.app.utils.buildRedirectUri
@@ -1174,10 +1175,11 @@ internal class ApiInterfaceImpl(
                   stateFlow.emit(resState)
                 }
               } catch (e: Exception) {
+                val details = exceptionActivityAttributes(e)
                 span.finish(
                   status = ActivityStatus.ERROR,
-                  extraAttributes = mapOf("exception.message" to (e.message ?: "")),
-                  message = e.message,
+                  extraAttributes = details,
+                  message = details["exception.message"],
                 )
                 stateFlow.emit(
                   APIState.Error("Network request failed. Are you connected to the internet?")
@@ -1185,10 +1187,11 @@ internal class ApiInterfaceImpl(
               }
             }
           } catch (e: Exception) {
+            val details = exceptionActivityAttributes(e)
             span.finish(
               status = ActivityStatus.ERROR,
-              extraAttributes = mapOf("exception.message" to (e.message ?: "")),
-              message = e.message,
+              extraAttributes = details,
+              message = details["exception.message"],
             )
             throw e
           }
@@ -1869,15 +1872,17 @@ internal class ApiInterfaceImpl(
             _errorFlow.emit("Error: ${response.error ?: "Unknown error"}")
           }
         } catch (e: Exception) {
-          platformLog("Failed to parse API response for $method $path: ${e.message ?: "Unknown error"}")
+          val details = exceptionActivityAttributes(e)
+          val message = details["exception.message"] ?: "Unknown error"
+          platformLog("Failed to parse API response for $method $path: $message")
           platformLog("Raw API response: $it")
           span.finish(
             status = ActivityStatus.ERROR,
-            extraAttributes = mapOf("exception.message" to (e.message ?: "")),
-            message = e.message,
+            extraAttributes = details,
+            message = message,
           )
           callback?.invoke(false, APIResponse(error = "Failed to parse API response"))
-          _errorFlow.emit("Error: Failed to parse API response (${e.message ?: "Unknown error"})")
+          _errorFlow.emit("Error: Failed to parse API response ($message)")
         }
       } ?: span.finish(
         status = ActivityStatus.ERROR,
