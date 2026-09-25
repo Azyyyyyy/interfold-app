@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 
 actual val client: HttpClient = HttpClient(Darwin) {
+  followRedirects = false
   install(WebSockets)
   install(ContentNegotiation) {
     json(globalSerializer)

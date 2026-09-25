@@ -12,6 +12,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 
 actual val client: HttpClient = HttpClient(OkHttp) {
+  followRedirects = false
+  engine {
+    installCloudflareAccessOkHttp()
+  }
   install(WebSockets)
   install(ContentNegotiation) {
     json(globalSerializer)
