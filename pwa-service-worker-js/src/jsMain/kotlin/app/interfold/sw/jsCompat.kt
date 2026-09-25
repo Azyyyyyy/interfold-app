@@ -4,7 +4,6 @@ import kotlin.js.Promise
 
 internal const val SERVING_CACHE_KEY = "/__serving-cache-name"
 internal const val APPLY_KEY = "/__apply-update-version"
-internal const val FIREBASE_CONFIG_URL = "/api/settings/firebase-config?platform=web"
 
 internal fun jsArrayToList(value: dynamic): List<String> {
   val result = mutableListOf<String>()
@@ -78,23 +77,6 @@ internal fun respondWith(event: dynamic, promise: Promise<dynamic>) {
   js("event.respondWith(promise)")
 }
 
-internal fun importFirebaseCompat(): Boolean {
-  return try {
-    js(
-      """
-      importScripts(
-        'https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js',
-        'https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging-compat.js'
-      )
-      """
-    )
-    true
-  } catch (e: dynamic) {
-    consoleWarn("[SW] Failed to importScripts for Firebase:", e)
-    false
-  }
-}
-
 @Suppress("UNUSED_PARAMETER")
 internal fun consoleLog(message: String) {
   js("console.log(message)")
@@ -155,32 +137,6 @@ internal fun broadcastAppVersion(version: String): Promise<dynamic> {
 @Suppress("UNUSED_PARAMETER")
 internal fun postVersionToSource(source: dynamic, version: String) {
   js("source.postMessage({ type: 'interfold-app-version', version: version })")
-}
-
-@Suppress("UNUSED_PARAMETER")
-internal fun closeNotification(notification: dynamic) {
-  js("notification.close()")
-}
-
-@Suppress("UNUSED_PARAMETER")
-internal fun handleNotificationClick(event: dynamic): Promise<dynamic> {
-  return asPromise(
-    js(
-      """
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-      var deepLink = event.notification.data && event.notification.data.deep_link;
-      var target = deepLink || '/';
-      for (var i = 0; i < clientList.length; i++) {
-        var client = clientList[i];
-        if (client.url === target || client.url.endsWith(target)) {
-          return client.focus();
-        }
-      }
-      return self.clients.openWindow(target);
-    })
-    """
-    ),
-  )
 }
 
 internal fun selfOrigin(): String = js("self.location.origin") as String

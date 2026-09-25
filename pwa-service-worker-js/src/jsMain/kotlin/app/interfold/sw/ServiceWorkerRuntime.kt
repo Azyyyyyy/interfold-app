@@ -14,20 +14,15 @@ internal class ServiceWorkerRuntime(
   fun attach() {
     if (attached) return
     attached = true
-    importFirebaseCompat()
     addSelfEventListener("install") { event -> onInstall(event) }
     addSelfEventListener("activate") { event -> onActivate(event) }
     addSelfEventListener("message") { event -> onMessage(event) }
     addSelfEventListener("fetch") { event -> onFetch(event) }
-    addSelfEventListener("notificationclick") { event -> onNotificationClick(event) }
   }
 
   private fun onInstall(event: dynamic) {
-    consoleLog("[SW] Install - precaching + Firebase init")
-    waitUntil(
-      event,
-      promiseAll(arrayOf(precacheAssets(), catchAny(ensureFirebaseInitialized()) { false })),
-    )
+    consoleLog("[SW] Install - precaching")
+    waitUntil(event, precacheAssets())
   }
 
   private fun precacheAssets(): Promise<dynamic> {
@@ -50,11 +45,9 @@ internal class ServiceWorkerRuntime(
   }
 
   private fun onActivate(event: dynamic) {
-    consoleLog("[SW] Activate - decide serving cache + ensuring Firebase")
+    consoleLog("[SW] Activate - decide serving cache")
     val work = thenAny(
-      thenAny(
-        promiseAll(arrayOf(decideServingCache(), catchAny(ensureFirebaseInitialized()) { false })),
-      ) { clientsClaim() },
+      thenAny(decideServingCache()) { clientsClaim() },
     ) { broadcastAppVersion(appVersion) }
     waitUntil(event, work)
   }
@@ -288,8 +281,4 @@ internal class ServiceWorkerRuntime(
     ))
   }
 
-  private fun onNotificationClick(event: dynamic) {
-    closeNotification(event.notification)
-    waitUntil(event, handleNotificationClick(event))
-  }
 }
