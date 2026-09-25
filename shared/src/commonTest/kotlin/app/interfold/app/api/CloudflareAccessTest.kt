@@ -3,6 +3,7 @@ package app.interfold.app.api
 import app.interfold.app.utils.globalSerializer
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.http.HttpHeaders
+import io.ktor.http.Url
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -13,7 +14,7 @@ import kotlin.test.assertTrue
 class CloudflareAccessTest {
   @AfterTest
   fun tearDown() {
-    CloudflareAccessCredentials.update(null)
+    CloudflareAccessCredentials.update(jwt = null, apiEndpoint = "")
   }
 
   @Test
@@ -136,6 +137,28 @@ class CloudflareAccessTest {
     assertNull(builder.headers[CloudflareAccessCredentials.JWT_ASSERTION_HEADER])
     assertNull(builder.headers[HttpHeaders.Authorization])
     assertNull(builder.headers[HttpHeaders.Cookie])
+  }
+
+  @Test
+  fun targetsConfiguredApiOrigin_matchesHostAndIgnoresPath() {
+    assertTrue(
+      targetsConfiguredApiOrigin(
+        Url("https://testapi.interfold.co.uk/avatars/abc.webp"),
+        "https://testapi.interfold.co.uk",
+      )
+    )
+    assertFalse(
+      targetsConfiguredApiOrigin(
+        Url("https://cdn.example.com/avatars/abc.webp"),
+        "https://testapi.interfold.co.uk",
+      )
+    )
+    assertFalse(
+      targetsConfiguredApiOrigin(
+        Url("https://testapi.interfold.co.uk/avatars/abc.webp"),
+        apiEndpoint = null,
+      )
+    )
   }
 
   @Test

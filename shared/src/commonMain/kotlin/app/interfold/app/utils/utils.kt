@@ -1,6 +1,7 @@
 package app.interfold.app.utils
 
 import androidx.compose.runtime.Composable
+import app.interfold.app.api.installCloudflareAccessHeadersForApiOrigin
 import app.interfold.app.telemetry.installImageFetcherTelemetry
 import io.kamel.core.config.Core
 import io.kamel.core.config.DefaultCacheSize
@@ -57,6 +58,7 @@ val kamelConfig = KamelConfig {
 
   httpUrlFetcher {
     installApiOriginCredentials()
+    installCloudflareAccessHeadersForApiOrigin()
     httpCache(100 * 1024 * 1024 /* 100 MiB */)
 
     install(HttpRequestRetry) {
@@ -78,6 +80,7 @@ val noCacheKamelConfig = KamelConfig {
 
   httpUrlFetcher {
     installApiOriginCredentials()
+    installCloudflareAccessHeadersForApiOrigin()
     httpCache(0)
 
     install(HttpRequestRetry) {
