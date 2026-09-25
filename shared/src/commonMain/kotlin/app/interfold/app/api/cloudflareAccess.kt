@@ -2,7 +2,6 @@ package app.interfold.app.api
 
 import io.ktor.client.HttpClientConfig
 import io.ktor.client.plugins.api.createClientPlugin
-import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.http.HeadersBuilder
 import io.ktor.http.HttpHeaders
@@ -83,8 +82,14 @@ fun HttpRequestBuilder.applyCloudflareAccessHeaders() {
 }
 
 fun HttpClientConfig<*>.installCloudflareAccessHeaders() {
-  defaultRequest {
-    applyCloudflareAccessHeaders(headers)
+  // onRequest runs after the body is attached. defaultRequest headers are
+  // dropped when Ktor rebuilds a multipart PUT (avatar upload).
+  install(CloudflareAccessHeadersPlugin)
+}
+
+private val CloudflareAccessHeadersPlugin = createClientPlugin("CloudflareAccessHeaders") {
+  onRequest { request, _ ->
+    applyCloudflareAccessHeaders(request.headers)
   }
 }
 

@@ -1,6 +1,7 @@
 package app.interfold.app.ui.model.interfaces
 
 import app.interfold.app.api.APIState
+import app.interfold.app.api.looksLikeCloudflareAccessChallenge
 import app.interfold.app.api.ChannelMessage
 import app.interfold.app.api.FriendRequests
 import app.interfold.app.api.KeyResponse
@@ -46,6 +47,7 @@ import app.interfold.app.utils.sortedLocaleAware
 import com.arkivanov.essenty.instancekeeper.InstanceKeeper
 import io.ktor.client.call.body
 import io.ktor.client.statement.HttpResponse
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpMethod.Companion.Delete
 import io.ktor.http.HttpMethod.Companion.Get
@@ -1891,6 +1893,10 @@ internal class ApiInterfaceImpl(
     }
 
   private suspend inline fun HttpResponse.emitError(): HttpResponse {
+    if (looksLikeCloudflareAccessChallenge(status.value, headers[HttpHeaders.Location], null)) {
+      _errorFlow.emit("Cloudflare Access blocked this request. Try signing in again.")
+      return this
+    }
     if (!this.status.isSuccess()) {
       _errorFlow.emit(this.body<APIResponse<Nothing>>().error!!)
     }
