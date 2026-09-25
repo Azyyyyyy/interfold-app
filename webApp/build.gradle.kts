@@ -7,6 +7,7 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
@@ -96,7 +97,10 @@ abstract class GenerateServiceWorkerPrecacheTask : DefaultTask() {
         val ext = path.substringAfterLast('.', "").lowercase()
         // runtime-config.js is rewritten at container start and must stay out of
         // the versioned precache.
-        ext in allowedExts && path != "/runtime-config.js"
+        ext in allowedExts &&
+          path != "/runtime-config.js" &&
+          path != "/interfold-sw.js" &&
+          path != "/service-worker.js"
       }
       .sorted()
       .distinct()
@@ -181,12 +185,23 @@ abstract class GenerateServiceWorkerPrecacheTask : DefaultTask() {
   }
 }
 
+val copyInterfoldSwJs = tasks.register<Copy>("copyInterfoldSwJs") {
+  group = "build"
+  description = "Copies the Kotlin/JS worker bundle next to the stamped service-worker.js"
+  dependsOn(":pwa-service-worker-js:assembleInterfoldSw")
+  from(project(":pwa-service-worker-js").layout.buildDirectory.dir("interfold-sw")) {
+    include("interfold-sw.js", "interfold-sw.js.map")
+  }
+  into(layout.buildDirectory.dir("processedResources/wasmJs/main"))
+}
+
 val generateServiceWorkerPrecache = tasks.register<GenerateServiceWorkerPrecacheTask>("generateServiceWorkerPrecache") {
   processedResourcesDir.set(layout.buildDirectory.dir("processedResources/wasmJs/main"))
   templateSourceFile.set(layout.projectDirectory.file("src/wasmJsMain/resources/service-worker.js"))
   outputServiceWorkerFile.set(layout.buildDirectory.file("processedResources/wasmJs/main/service-worker.js"))
   buildIdEager.set(rootProject.extra["app.buildId"] as String)
   localBuild.set(rootProject.extra["app.isLocal"] as Boolean)
+  dependsOn(copyInterfoldSwJs)
   // When there's no runNumber we regenerate on every invocation so the browser
   // sees a new CACHE_NAME each local build. CI runs are deterministic (the
   // runNumber-derived buildId is stable) and can use the default up-to-date
@@ -221,7 +236,13 @@ tasks.matching { it.name == "wasmJsBrowserDistribution" }
     val distHtml = layout.buildDirectory.file("dist/wasmJs/productionExecutable/index.html")
     val swDist = layout.buildDirectory.file("dist/wasmJs/productionExecutable/service-worker.js")
     val swProcessed = layout.buildDirectory.file("processedResources/wasmJs/main/service-worker.js")
+    val swJs = layout.buildDirectory.file("processedResources/wasmJs/main/interfold-sw.js")
+    val distDir = layout.buildDirectory.dir("dist/wasmJs/productionExecutable")
     doLast {
+      val swJsFile = swJs.get().asFile
+      if (swJsFile.exists()) {
+        swJsFile.copyTo(distDir.get().asFile.resolve("interfold-sw.js"), overwrite = true)
+      }
       val htmlFile = distHtml.get().asFile
       val swFile = listOf(swDist.get().asFile, swProcessed.get().asFile)
         .firstOrNull { it.exists() }
@@ -243,10 +264,16 @@ tasks.matching { it.name == "wasmJsDevelopmentExecutableCompileSync" }
     dependsOn(generateServiceWorkerPrecache)
   }
 
-// NOTE: do not create a compile-sync -> generateServiceWorkerPrecache dependency
-// because it can produce a circular dependency with webpack tasks. The
-// generator is instead wired to run after webpack via `finalizedBy` above and
-// should depend on copy tasks if additional ordering is required.
+// Production compile-sync also reads processedResources/wasmJs/main, where
+// copyInterfoldSwJs writes interfold-sw.js. Without this, Gradle 9 fails
+// :webApp:wasmJsBrowserDistribution (the Docker image build) with an
+// implicit-dependency error.
+// Do not route this through generateServiceWorkerPrecache: that task is
+// finalizedBy webpack, and compile-sync -> generator can cycle.
+tasks.matching { it.name == "wasmJsProductionExecutableCompileSync" }
+  .configureEach {
+    dependsOn(copyInterfoldSwJs)
+  }
 
 // Prevent Kotlin's generated process resources Copy task from copying the
 // source `service-worker.js` into processedResources, which would overwrite

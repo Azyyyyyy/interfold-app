@@ -1,0 +1,11 @@
+config.target = "webworker";
+config.output = config.output || {};
+config.output.globalObject = "self";
+config.output.filename = "interfold-sw.js";
+config.output.iife = true;
+config.output.library = { type: "var", name: "InterfoldServiceWorkerLib" };
+config.experiments = config.experiments || {};
+config.experiments.outputModule = false;
+config.optimization = config.optimization || {};
+config.optimization.runtimeChunk = false;
+config.optimization.splitChunks = { chunks: () => false };
