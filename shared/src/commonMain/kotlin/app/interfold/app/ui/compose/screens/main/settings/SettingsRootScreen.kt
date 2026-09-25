@@ -1266,5 +1266,6 @@ private fun SettingsServerStatus(cardGroupPosition: CardGroupPosition, openURL: 
     spotlightDescription = Res.string.tooltip_server_status_desc.compose,
     cardGroupPosition = cardGroupPosition,
     url = "https://status.interfold.co.uk",
-    openURL = openURL
+    openURL = openURL,
+    enabled = false
   )

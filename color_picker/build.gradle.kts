@@ -16,6 +16,7 @@ kotlin {
   targets.named<com.android.build.api.dsl.KotlinMultiplatformAndroidLibraryTarget>("android") {
     namespace = "app.interfold.color_picker"
     compileSdk = (findProperty("android.compileSdk") as String).toInt()
+    minSdk = (findProperty("android.minSdk") as String).toInt()
   }
 
   iosArm64()
