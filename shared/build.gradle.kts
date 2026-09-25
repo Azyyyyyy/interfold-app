@@ -124,6 +124,7 @@ kotlin {
     val ktorVersion = "3.4.0"
 
     val commonMain by getting {
+      kotlin.srcDir("src/appUpdatePolicy/kotlin")
       println(extra)
       // val markdownVersion = "0.31.0-rc01"
       val kamelVersion = "1.0.9"
@@ -495,6 +496,31 @@ tasks.register<Test>("desktopIntegrationTest") {
 }
 
 // ---------------------------------------------------------------------------
+// PWA E2E fixtures for wasmJsBrowserTest (thin SW + Kotlin/JS worker bundle)
+// ---------------------------------------------------------------------------
+val preparePwaE2EFixtures = tasks.register("preparePwaE2EFixtures") {
+  group = "verification"
+  description = "Stamps a test service-worker.js and copies interfold-sw.js for Karma proxies."
+  val dest = rootProject.layout.buildDirectory.dir("pwa-e2e")
+  val swTemplate = rootProject.layout.projectDirectory.file("webApp/src/wasmJsMain/resources/service-worker.js")
+  val swJs = project(":pwa-service-worker-js").layout.buildDirectory.file("interfold-sw/interfold-sw.js")
+  dependsOn(":pwa-service-worker-js:assembleInterfoldSw")
+  inputs.file(swTemplate)
+  inputs.file(swJs)
+  outputs.dir(dest)
+  doLast {
+    val out = dest.get().asFile
+    out.mkdirs()
+    val stamped = swTemplate.asFile.readText(Charsets.UTF_8).replace(
+      Regex("""const APP_VERSION = ['"][^'"]*['"];"""),
+      "const APP_VERSION = 'e2e-incoming';",
+    )
+    File(out, "service-worker.js").writeText(stamped, Charsets.UTF_8)
+    swJs.get().asFile.copyTo(File(out, "interfold-sw.js"), overwrite = true)
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Kotlin/Wasm browser tests (Karma + Chrome Headless)
 // ---------------------------------------------------------------------------
 // Unit tests: `:shared:wasmJsBrowserTest` (commonTest + wasmJsTest).
@@ -624,6 +650,7 @@ val stopWasmIntegrationBackend = tasks.register("stopWasmIntegrationBackend") {
 }
 
 tasks.matching { it.name.contains("wasmJs") && it.name.contains("Test") }.configureEach {
+  dependsOn(preparePwaE2EFixtures)
   mustRunAfter(startWasmIntegrationBackend)
   val urlIn = wasmItUrlFile
   val karmaUrlOut = rootProject.layout.buildDirectory

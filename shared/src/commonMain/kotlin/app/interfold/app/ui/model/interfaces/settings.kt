@@ -99,6 +99,7 @@ class SettingsInterfaceImpl(
     CloudflareAccessCredentials.update(
       jwt = initialSettings.cloudflareAccessJwt,
       nearExpirySkewMinutes = initialSettings.cloudflareAccessNearExpirySkewMinutes,
+      apiEndpoint = initialSettings.apiEndpoint,
     )
   }
 
@@ -110,6 +111,7 @@ class SettingsInterfaceImpl(
     CloudflareAccessCredentials.update(
       jwt = settings.cloudflareAccessJwt,
       nearExpirySkewMinutes = settings.cloudflareAccessNearExpirySkewMinutes,
+      apiEndpoint = settings.apiEndpoint,
     )
     if(updateWidgets) { platformUtilities.updateWidgets() }
   }
@@ -370,6 +372,7 @@ class SettingsInterfaceImpl(
     CloudflareAccessCredentials.update(
       jwt = new.cloudflareAccessJwt,
       nearExpirySkewMinutes = new.cloudflareAccessNearExpirySkewMinutes,
+      apiEndpoint = new.apiEndpoint,
     )
 
     if(updateWidgets) {

@@ -64,12 +64,12 @@ private external fun writeDismissedWebAppVersion(version: String)
   "() => {" +
     "if (!('serviceWorker' in navigator)) { location.reload(); return; }" +
     "navigator.serviceWorker.getRegistration().then((reg) => {" +
-      "const waiting = reg && reg.waiting;" +
-      "if (!waiting) { location.reload(); return; }" +
+      "const target = reg && (reg.waiting || reg.active);" +
+      "if (!target) { location.reload(); return; }" +
       "let reloading = false;" +
       "const reloadOnce = () => { if (reloading) return; reloading = true; location.reload(); };" +
       "navigator.serviceWorker.addEventListener('controllerchange', reloadOnce);" +
-      "waiting.postMessage({ type: 'SKIP_WAITING' });" +
+      "target.postMessage({ type: 'SKIP_WAITING' });" +
       "setTimeout(reloadOnce, 1000);" +
     "}).catch(() => location.reload());" +
   "}"
