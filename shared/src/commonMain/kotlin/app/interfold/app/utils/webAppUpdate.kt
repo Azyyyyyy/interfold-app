@@ -16,21 +16,16 @@ expect val webAppUpdateNoticeDismissed: Flow<Boolean>
 
 expect fun reloadWebApp()
 
+/** Hide the snackbar and keep the running build across reloads until Reload. */
 expect fun dismissPendingWebAppUpdate()
 
 internal fun isPendingWebAppVersion(
   runningBuildId: String,
   incomingVersion: String?
-): Boolean {
-  return !incomingVersion.isNullOrEmpty() && incomingVersion != runningBuildId
-}
+): Boolean = AppUpdatePolicy.isPending(runningBuildId, incomingVersion)
 
 internal fun shouldShowWebAppUpdateNotice(
   runningBuildId: String,
   incomingVersion: String?,
   dismissedVersion: String?
-): Boolean {
-  if (!isPendingWebAppVersion(runningBuildId, incomingVersion)) return false
-  if (incomingVersion == dismissedVersion) return false
-  return true
-}
+): Boolean = AppUpdatePolicy.shouldShowNotice(runningBuildId, incomingVersion, dismissedVersion)
