@@ -548,12 +548,12 @@ val httpBuilder: (token: String?, body: Any?) -> (HttpRequestBuilder.() -> Unit)
 
 private suspend fun get(endpoint: String, token: String?, path: String) =
   withContext(ioDispatcher) {
-    client.get("$endpoint/$path", httpBuilder(token, null))
+    client.get(joinApiUrl(endpoint, path), httpBuilder(token, null))
   }
 
 private suspend fun post(endpoint: String, token: String, path: String, body: Any? = null) =
   withContext(ioDispatcher) {
-    client.post("$endpoint/$path", httpBuilder(token, body))
+    client.post(joinApiUrl(endpoint, path), httpBuilder(token, body))
   }
 
 /**
@@ -567,8 +567,31 @@ private suspend fun post(endpoint: String, token: String, path: String, body: An
  */
 private suspend fun put(endpoint: String, token: String, path: String, body: Any? = null) =
   withContext(ioDispatcher) {
-    client.put("$endpoint/$path", httpBuilder(token, body))
+    client.put(joinApiUrl(endpoint, path), httpBuilder(token, body))
   }
+
+private suspend fun putFollowingSameOriginRedirect(
+  endpoint: String,
+  token: String,
+  path: String,
+  body: () -> Any,
+): HttpResponse {
+  var url = joinApiUrl(endpoint, path)
+  repeat(2) {
+    val response = withContext(ioDispatcher) {
+      client.put(url, httpBuilder(token, body()))
+    }
+    val location = response.headers[HttpHeaders.Location]
+    if (shouldReplayWriteToRedirect(url, response.status.value, location)) {
+      url = resolveHttpUrl(url, location!!)
+    } else {
+      return response
+    }
+  }
+  return withContext(ioDispatcher) {
+    client.put(url, httpBuilder(token, body()))
+  }
+}
 
 /**
  * Sends a DELETE request to the Interfold API.
@@ -581,34 +604,29 @@ private suspend fun put(endpoint: String, token: String, path: String, body: Any
  */
 private suspend fun delete(endpoint: String, token: String, path: String, body: Any? = null) =
   withContext(ioDispatcher) {
-    client.delete("$endpoint/$path", httpBuilder(token, body))
+    client.delete(joinApiUrl(endpoint, path), httpBuilder(token, body))
   }
 
-suspend fun setAlterAvatar(endpoint: String, token: String, alterID: Int, bytes: ByteArray, fileName: String) =
-  put(
-    endpoint, token, "systems/me/alters/$alterID/avatar", MultiPartFormDataContent(
-      formData {
-        append("file", bytes, Headers.build {
-          append(HttpHeaders.ContentType, "image/${fileName.substringAfterLast(".")}")
-          append(HttpHeaders.ContentDisposition, "form-data; name=\"file\"; filename=\"${fileName}\"")
-        })
-      },
-      boundary = "InterfoldBoundary"
-    )
+private fun avatarMultipart(bytes: ByteArray, fileName: String) =
+  MultiPartFormDataContent(
+    formData {
+      append("file", bytes, Headers.build {
+        append(HttpHeaders.ContentType, "image/${fileName.substringAfterLast(".")}")
+        append(HttpHeaders.ContentDisposition, "form-data; name=\"file\"; filename=\"${fileName}\"")
+      })
+    },
+    boundary = "InterfoldBoundary",
   )
 
+suspend fun setAlterAvatar(endpoint: String, token: String, alterID: Int, bytes: ByteArray, fileName: String) =
+  putFollowingSameOriginRedirect(endpoint, token, "systems/me/alters/$alterID/avatar") {
+    avatarMultipart(bytes, fileName)
+  }
+
 suspend fun setSystemAvatar(endpoint: String, token: String, bytes: ByteArray, fileName: String) =
-  put(
-    endpoint, token, "settings/avatar", MultiPartFormDataContent(
-      formData {
-        append("file", bytes, Headers.build {
-          append(HttpHeaders.ContentType, "image/${fileName.substringAfterLast(".")}")
-          append(HttpHeaders.ContentDisposition, "form-data; name=\"file\"; filename=\"${fileName}\"")
-        })
-      },
-      boundary = "InterfoldBoundary"
-    )
-  )
+  putFollowingSameOriginRedirect(endpoint, token, "settings/avatar") {
+    avatarMultipart(bytes, fileName)
+  }
 
 suspend fun getFrontingAlters(endpoint: String, token: String) = get(endpoint, token, "systems/me/fronting").body<APIResponse<List<MyFrontItem>>>()
 

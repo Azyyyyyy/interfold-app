@@ -94,6 +94,56 @@ class CloudflareAccessTest {
   }
 
   @Test
+  fun isCompletedHttpWrite_acceptsSuccessAndNonAccessRedirect() {
+    assertTrue(isCompletedHttpWrite(200, locationHeader = null))
+    assertTrue(isCompletedHttpWrite(204, locationHeader = null))
+    assertTrue(isCompletedHttpWrite(302, locationHeader = "https://cdn.example.com/avatars/new.webp"))
+    assertFalse(
+      isCompletedHttpWrite(
+        302,
+        locationHeader = "https://myteam.cloudflareaccess.com/cdn-cgi/access/login",
+      )
+    )
+    assertFalse(isCompletedHttpWrite(500, locationHeader = null))
+  }
+
+  @Test
+  fun joinApiUrl_stripsDuplicateSlashes() {
+    assertEquals(
+      "https://api.interfold.co.uk/api/systems/me/alters/1/avatar",
+      joinApiUrl("https://api.interfold.co.uk/api/", "/systems/me/alters/1/avatar"),
+    )
+  }
+
+  @Test
+  fun shouldReplayWriteToRedirect_sameHostApiRewriteOnly() {
+    val request = "https://api.interfold.co.uk/api/systems/me/alters/1/avatar"
+    assertTrue(
+      shouldReplayWriteToRedirect(
+        request,
+        301,
+        "https://api.interfold.co.uk/api/systems/me/alters/1/avatar/",
+      )
+    )
+    assertTrue(shouldReplayWriteToRedirect(request, 308, "/api/systems/me/alters/1/avatar/"))
+    assertFalse(shouldReplayWriteToRedirect(request, 301, "https://cdn.example.com/avatars/new.webp"))
+    assertFalse(
+      shouldReplayWriteToRedirect(
+        request,
+        302,
+        "https://myteam.cloudflareaccess.com/cdn-cgi/access/login",
+      )
+    )
+    assertFalse(
+      shouldReplayWriteToRedirect(
+        request,
+        200,
+        "https://api.interfold.co.uk/api/systems/me/alters/1/avatar/",
+      )
+    )
+  }
+
+  @Test
   fun httpBuilder_attachesAccessJwtButNeverAsBearer() {
     CloudflareAccessCredentials.update("access-token-value")
     val builder = HttpRequestBuilder()

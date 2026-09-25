@@ -5,7 +5,9 @@ import io.ktor.client.plugins.api.createClientPlugin
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.http.HeadersBuilder
 import io.ktor.http.HttpHeaders
+import io.ktor.http.URLBuilder
 import io.ktor.http.Url
+import io.ktor.http.takeFrom
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -202,4 +204,48 @@ fun looksLikeCloudflareAccessChallenge(
     return true
   }
   return false
+}
+
+/**
+ * Writes (avatar PUT, etc.) must not treat a post-success redirect as failure.
+ * Access 302/401/403 challenges are still failures.
+ */
+fun isCompletedHttpWrite(statusCode: Int, locationHeader: String?): Boolean {
+  if (looksLikeCloudflareAccessChallenge(statusCode, locationHeader, null)) return false
+  return statusCode in 200..399
+}
+
+fun joinApiUrl(endpoint: String, path: String): String {
+  val base = endpoint.trim().trimEnd('/')
+  val rel = path.trim().trimStart('/')
+  return "$base/$rel"
+}
+
+fun resolveHttpUrl(base: String, location: String): String =
+  URLBuilder(base).takeFrom(location).buildString()
+
+/**
+ * Replay a write when the origin only rewrote the URL (trailing slash, `/api`
+ * canonicalization). Do not follow Access logins or off-host CDN Locations —
+ * those are either auth failures or "the resource is already at Location".
+ */
+fun shouldReplayWriteToRedirect(
+  requestUrl: String,
+  statusCode: Int,
+  locationHeader: String?,
+): Boolean {
+  if (statusCode !in 301..308 || locationHeader.isNullOrBlank()) return false
+  if (looksLikeCloudflareAccessChallenge(statusCode, locationHeader, null)) return false
+  val req = runCatching { Url(requestUrl) }.getOrNull() ?: return false
+  val dest = runCatching { Url(resolveHttpUrl(requestUrl, locationHeader)) }.getOrNull() ?: return false
+  if (!req.protocol.name.equals(dest.protocol.name, ignoreCase = true) ||
+    !req.host.equals(dest.host, ignoreCase = true) ||
+    req.port != dest.port
+  ) {
+    return false
+  }
+  val reqPath = req.encodedPath.trimEnd('/')
+  val destPath = dest.encodedPath.trimEnd('/')
+  return reqPath.equals(destPath, ignoreCase = true) ||
+    destPath.startsWith("/api/", ignoreCase = true)
 }

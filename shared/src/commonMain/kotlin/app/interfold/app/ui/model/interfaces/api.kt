@@ -1,6 +1,7 @@
 package app.interfold.app.ui.model.interfaces
 
 import app.interfold.app.api.APIState
+import app.interfold.app.api.isCompletedHttpWrite
 import app.interfold.app.api.looksLikeCloudflareAccessChallenge
 import app.interfold.app.api.ChannelMessage
 import app.interfold.app.api.FriendRequests
@@ -47,6 +48,7 @@ import app.interfold.app.utils.sortedLocaleAware
 import com.arkivanov.essenty.instancekeeper.InstanceKeeper
 import io.ktor.client.call.body
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpMethod.Companion.Delete
@@ -65,6 +67,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.Month
 import kotlinx.datetime.TimeZone
@@ -1260,7 +1263,9 @@ internal class ApiInterfaceImpl(
 
   override fun setAlterAvatar(alterID: Int, bytes: ByteArray, fileName: String) =
     launchIO {
-      app.interfold.app.api.setAlterAvatar(apiEndpoint, token.value, alterID, bytes, fileName).emitError()
+      runRawHttp {
+        app.interfold.app.api.setAlterAvatar(apiEndpoint, token.value, alterID, bytes, fileName)
+      }
     }
 
   override fun removeAlterAvatar(alterID: Int) =
@@ -1779,7 +1784,9 @@ internal class ApiInterfaceImpl(
 
   override fun setSystemAvatar(bytes: ByteArray, fileName: String) {
     launchIO {
-      app.interfold.app.api.setSystemAvatar(apiEndpoint, token.value, bytes, fileName).emitError()
+      runRawHttp {
+        app.interfold.app.api.setSystemAvatar(apiEndpoint, token.value, bytes, fileName)
+      }
     }
   }
 
@@ -1892,13 +1899,30 @@ internal class ApiInterfaceImpl(
       block()
     }
 
-  private suspend inline fun HttpResponse.emitError(): HttpResponse {
-    if (looksLikeCloudflareAccessChallenge(status.value, headers[HttpHeaders.Location], null)) {
-      _errorFlow.emit("Cloudflare Access blocked this request. Try signing in again.")
-      return this
+  private suspend fun runRawHttp(block: suspend () -> HttpResponse) {
+    try {
+      block().emitError()
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      _errorFlow.emit(e.message ?: "Request failed")
     }
-    if (!this.status.isSuccess()) {
-      _errorFlow.emit(this.body<APIResponse<Nothing>>().error!!)
+  }
+
+  private suspend fun HttpResponse.emitError(): HttpResponse {
+    val location = headers[HttpHeaders.Location]
+    if (!isCompletedHttpWrite(status.value, location)) {
+      val raw = runCatching { bodyAsText() }.getOrNull()
+      if (looksLikeCloudflareAccessChallenge(status.value, location, raw)) {
+        _errorFlow.emit("Cloudflare Access blocked this request. Try signing in again.")
+        return this
+      }
+      val message = raw
+        ?.let {
+          runCatching { globalSerializer.decodeFromString<APIResponse<JsonElement?>>(it) }.getOrNull()?.error
+        }
+        ?: "Request failed (${status.value})"
+      _errorFlow.emit(message)
     }
     return this
   }
