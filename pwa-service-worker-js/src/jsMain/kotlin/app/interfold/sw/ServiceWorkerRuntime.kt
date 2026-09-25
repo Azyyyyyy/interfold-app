@@ -9,15 +9,45 @@ internal class ServiceWorkerRuntime(
 ) {
   private val cacheName: String = AppUpdatePolicy.appCacheName(appVersion)
   private var servingCacheName: String = cacheName
+  private var servingReady: Promise<dynamic> = promiseResolve(null)
   private var attached: Boolean = false
 
   fun attach() {
     if (attached) return
     attached = true
+    servingReady = restoreServingCache()
     addSelfEventListener("install") { event -> onInstall(event) }
     addSelfEventListener("activate") { event -> onActivate(event) }
     addSelfEventListener("message") { event -> onMessage(event) }
     addSelfEventListener("fetch") { event -> onFetch(event) }
+  }
+
+  private fun restoreServingCache(): Promise<dynamic> {
+    val current = cacheName
+    val servingKey = SERVING_CACHE_KEY
+    val meta = AppUpdatePolicy.SW_META_CACHE
+    return thenAny(
+      asPromise(
+        js(
+          """
+      Promise.all([
+        caches.open(meta).then(function(c) {
+          return c.match(servingKey).then(function(r) { return r ? r.text() : ''; });
+        }),
+        caches.keys()
+      ])
+      """
+        ),
+      ),
+    ) { pair ->
+      val pinned = pair[0]?.toString().orEmpty()
+      val keys = jsArrayToList(pair[1])
+      servingCacheName = AppUpdatePolicy.servingCacheOnWorkerStart(
+        current,
+        pinned.ifEmpty { null },
+        keys,
+      )
+    }
   }
 
   private fun onInstall(event: dynamic) {
@@ -32,7 +62,7 @@ internal class ServiceWorkerRuntime(
       """
       caches.open(name).then(function(cache) {
         return Promise.all(urls.map(function(url) {
-          return fetch(url).then(function(resp) {
+          return fetch(url, { credentials: 'include', redirect: 'manual' }).then(function(resp) {
             if (resp && resp.status === 200) {
               return cache.put(url, resp.clone());
             }
@@ -46,10 +76,10 @@ internal class ServiceWorkerRuntime(
 
   private fun onActivate(event: dynamic) {
     consoleLog("[SW] Activate - decide serving cache")
-    val work = thenAny(
+    servingReady = thenAny(
       thenAny(decideServingCache()) { clientsClaim() },
     ) { broadcastAppVersion(appVersion) }
-    waitUntil(event, work)
+    waitUntil(event, servingReady)
   }
 
   private fun decideServingCache(): Promise<dynamic> {
@@ -154,22 +184,22 @@ internal class ServiceWorkerRuntime(
     if (url.origin != selfOrigin()) return
 
     val pathname = url.pathname as String
-    if (pathname == "/runtime-config.js") {
-      respondWith(event, fetchNoStore(req))
-      return
-    }
+    // Worker fetch omits the Access cookie; the document request does not.
+    if (AppUpdatePolicy.isBrowserCredentialedPath(pathname)) return
+    respondWith(event, thenAny(servingReady) { routeSameOriginFetch(event) })
+  }
+
+  private fun routeSameOriginFetch(event: dynamic): Promise<dynamic> {
+    val req = event.request
+    val url = js("new URL(req.url)")
+    val pathname = url.pathname as String
     if (pathname.startsWith("/api/")) {
-      respondWith(
-        event,
-        catchAny(fetchRaw(req)) { cachesMatch(req) },
-      )
-      return
+      return catchAny(fetchRaw(req)) { cachesMatch(req) }
     }
 
     val mode = req.mode?.toString()
     if (mode == "navigate") {
-      respondWith(event, fetchCacheFirst(req, "/index.html"))
-      return
+      return fetchCacheFirst(req, "/index.html")
     }
 
     val destination = req.destination?.toString().orEmpty()
@@ -178,8 +208,7 @@ internal class ServiceWorkerRuntime(
       pathname.endsWith(".js") ||
       pathname.endsWith(".mjs")
     if (isAppBinary) {
-      respondWith(event, fetchCacheFirst(req, null))
-      return
+      return fetchCacheFirst(req, null)
     }
 
     val isStaticAsset = destination == "style" ||
@@ -188,14 +217,10 @@ internal class ServiceWorkerRuntime(
       pathname.endsWith(".css") ||
       pathname.contains("/lib/")
     if (isStaticAsset) {
-      respondWith(event, fetchStatic(event, req))
-      return
+      return fetchStatic(event, req)
     }
 
-    respondWith(
-      event,
-      thenAny(cachesMatch(req)) { cached -> cached ?: fetchAndCache(req) },
-    )
+    return thenAny(cachesMatch(req)) { cached -> cached ?: fetchAndCache(req) }
   }
 
   private fun pinnedToPreviousBuild(): Boolean {
@@ -214,11 +239,12 @@ internal class ServiceWorkerRuntime(
           if (!allowNetwork) {
             return new Response('', { status: 503, statusText: 'Service Unavailable' });
           }
-          return fetch(request).then(function(networkResp) {
+          return fetch(request, { credentials: 'include', redirect: 'manual' }).then(function(networkResp) {
             if (networkResp && networkResp.status === 200) {
               try { cache.put(key, networkResp.clone()); } catch (e) {}
+              return networkResp;
             }
-            return networkResp;
+            return new Response('', { status: 503, statusText: 'Service Unavailable' });
           }).catch(function() {
             return new Response('', { status: 503, statusText: 'Service Unavailable' });
           });
@@ -239,11 +265,12 @@ internal class ServiceWorkerRuntime(
           if (!allowNetwork) {
             return new Response('', { status: 503, statusText: 'Service Unavailable' });
           }
-          return fetch(request).then(function(response) {
+          return fetch(request, { credentials: 'include', redirect: 'manual' }).then(function(response) {
             if (response && response.status === 200) {
               cache.put(request, response.clone());
+              return response;
             }
-            return response;
+            return new Response('', { status: 503, statusText: 'Service Unavailable' });
           }).catch(function() {
             return new Response('', { status: 503, statusText: 'Service Unavailable' });
           });
@@ -261,15 +288,18 @@ internal class ServiceWorkerRuntime(
       caches.open(serving).then(function(cache) {
         return cache.match(request).then(function(cachedResp) {
           if (pinned) {
-            return cachedResp || fetch(request).catch(function() {
+            return cachedResp || fetch(request, { credentials: 'include', redirect: 'manual' }).then(function(resp) {
+              return (resp && resp.status === 200) ? resp : new Response('', { status: 503, statusText: 'Service Unavailable' });
+            }).catch(function() {
               return new Response('', { status: 503, statusText: 'Service Unavailable' });
             });
           }
-          var networkFetch = fetch(request).then(function(networkResp) {
+          var networkFetch = fetch(request, { credentials: 'include', redirect: 'manual' }).then(function(networkResp) {
             if (networkResp && networkResp.status === 200) {
               cache.put(request, networkResp.clone());
+              return networkResp;
             }
-            return networkResp;
+            return cache.match(request);
           }).catch(function() { return cache.match(request); }).then(function(resp) {
             return resp || new Response('', { status: 503, statusText: 'Service Unavailable' });
           });
