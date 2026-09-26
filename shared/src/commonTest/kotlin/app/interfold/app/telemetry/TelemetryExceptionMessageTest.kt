@@ -48,4 +48,11 @@ class TelemetryExceptionMessageTest {
     )
     assertEquals("RuntimeException", readableExceptionType(RuntimeException("Connection refused")))
   }
+
+  @Test
+  fun activityAttributesKeepOrdinaryMessages() {
+    val attrs = exceptionActivityAttributes(RuntimeException("Connection refused"))
+    assertEquals("Connection refused", attrs["exception.message"])
+    assertEquals("RuntimeException", attrs["exception.type"])
+  }
 }

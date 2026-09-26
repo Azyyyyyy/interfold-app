@@ -649,6 +649,14 @@ val stopWasmIntegrationBackend = tasks.register("stopWasmIntegrationBackend") {
   }
 }
 
+tasks.matching {
+  it.name.startsWith("wasmJs") &&
+    (it.name.contains("Webpack") || it.name.contains("CompileSync"))
+}.configureEach {
+  inputs.dir("src/wasmJsMain/js")
+  inputs.dir("src/wasmJsTest/js")
+}
+
 tasks.matching { it.name.contains("wasmJs") && it.name.contains("Test") }.configureEach {
   dependsOn(preparePwaE2EFixtures)
   mustRunAfter(startWasmIntegrationBackend)

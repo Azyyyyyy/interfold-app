@@ -15,7 +15,7 @@ import app.interfold.app.api.model.MyTag
 import app.interfold.app.api.model.Poll
 import app.interfold.app.telemetry.ActivityStatus
 import app.interfold.app.telemetry.Telemetry
-import app.interfold.app.telemetry.readableExceptionMessage
+import app.interfold.app.telemetry.exceptionActivityAttributes
 import app.interfold.app.utils.BuildConfig
 import app.interfold.app.utils.DevicePlatform
 import app.interfold.app.utils.globalSerializer
@@ -421,12 +421,13 @@ internal class KotlixPhoenixSocketSession(
           }
         }
         is SocketEvent.FailureEvent -> {
-          val message = readableExceptionMessage(it.throwable)
+          val details = exceptionActivityAttributes(it.throwable)
+          val message = details["exception.message"].orEmpty()
           Telemetry.finishSpan(
             name = "phoenix.failure",
             status = ActivityStatus.ERROR,
             startedAtMillis = connectAttemptAtMillis,
-            attributes = mapOf("exception.message" to message),
+            attributes = details,
             message = message,
           )
           errorPipeline.emit(message)
