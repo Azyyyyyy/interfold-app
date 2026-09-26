@@ -76,7 +76,9 @@ fun compressUIImage(image: UIImage): ByteArray {
     image,
     format = SDImageFormatWebP,
     options = mapOf(
-      SDImageCoderEncodeMaxPixelSize to NSValue.valueWithCGSize(CGSizeMake(1024.0, 1024.0))
+      SDImageCoderEncodeMaxPixelSize to NSValue.valueWithCGSize(
+        CGSizeMake(AVATAR_MAX_EDGE_PX.toDouble(), AVATAR_MAX_EDGE_PX.toDouble())
+      )
     )
   ) ?: throw IllegalStateException("Failed to convert UIImage to WebP data")
 
