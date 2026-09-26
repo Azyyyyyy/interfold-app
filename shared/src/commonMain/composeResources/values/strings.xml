@@ -12,7 +12,6 @@
     <string name="singlet_mode">Singlet mode</string>
     <string name="singlet_mode_body">Singlet mode is now enabled. All system-specific features have been hidden. You will only be able to add friends to get updates on their front status.</string>
 
-    <string name="login">Log in</string>
     <string name="login_google">Log in with Google</string>
     <string name="login_discord">Log in with Discord</string>
     <string name="login_apple">Log in with Apple</string>
@@ -23,8 +22,6 @@
     <string name="login_methods_retry">Try again</string>
     <string name="or_lowercase">or</string>
 
-    <string name="direct_token_login_title">Direct token login</string>
-    <string name="direct_token_login_body">Please enter your token.\n\nThis feature is for testing purposes only. IF YOU DON'T KNOW WHAT THIS MEANS, DO NOT CONTINUE! If someone has asked you to enter a token here, they are trying to scam you.\n\nOnce you enter a token, the app will close. You will need to open it again manually.</string>
     <string name="token">Token</string>
 
     <string name="submit">Submit</string>
@@ -266,11 +263,6 @@
     <string name="search_alters">Search alters...</string>
     <string name="search_tags">Search tags...</string>
     <string name="privacy_warning">This screen only shows alters you have access to view. You shouldn't show this screen to anyone else!</string>
-
-    <string name="our_community">Our community</string>
-
-    <string name="website_card_title">Website</string>
-    <string name="website_card_body">Visit our website to learn more about the Interfold platform and its features.</string>
 
     <string name="hotlines">Hotlines</string>
 
@@ -742,7 +734,7 @@
     <string name="tooltip_activity_share_with_server_desc">When enabled, the app asks your Interfold instance for an OTLP address and, if one is advertised, exports traces there. Nothing is sent to a vendor crash service. If the instance does not share an address, activity stays on this device.</string>
     <string name="tooltip_activity_custom_otlp_desc">Optional. Send the same local activity to a collector you run, such as http://host:4318. Independent of the server toggle.</string>
     <string name="tooltip_open_source_licenses_desc">This screen contains a list of all open source libraries and software used by the Interfold app.</string>
-    <string name="tooltip_server_status_desc">This button opens a link to the Interfold server status page. If the app is misbehaving, you can check here to see if our servers are down or under maintenance!</string>
+    <string name="tooltip_server_status_desc">Server status is being reworked and isn't available right now.</string>
 
     <string name="tooltip_color_mode_desc">This setting controls the color mode of the app. "Same as device" will match the setting on your device, while "Light" and "Dark" will force the app to use those modes.</string>
     <string name="tooltip_theme_color_desc">This setting controls the primary color of the app. Choose a color that you like, and the app will change its color to match.\n\nIf "Dynamic color type" is not "None," alters, tags, and journal entries will override this color with their own.</string>
