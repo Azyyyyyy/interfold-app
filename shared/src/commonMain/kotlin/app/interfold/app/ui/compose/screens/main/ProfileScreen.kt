@@ -162,7 +162,6 @@ private fun ProfileRoot(
   val imageCropper = component.imageCropper
 
   val cropState = imageCropper?.imageCropper?.cropState
-  val selectedImage = imageCropper?.selectedImage?.collectAsState()
   var avatarState by state(AvatarState.Loaded)
 
   var avatarSheetOpen by state(false)
@@ -186,12 +185,14 @@ private fun ProfileRoot(
     }
   }
 
-  LaunchedEffect(selectedImage?.value) {
-    if (selectedImage?.value != null) {
+  LaunchedEffect(imageCropper) {
+    val cropper = imageCropper ?: return@LaunchedEffect
+    cropper.selectedImage.collect { image ->
+      if (image == null) return@collect
       avatarState = AvatarState.Preparing
-      val bytes = runCatching { imageCropper.getCompressedImage() }.getOrElse {
+      val bytes = runCatching { cropper.getCompressedImage() }.getOrElse {
         avatarState = AvatarState.Error
-        return@LaunchedEffect
+        return@collect
       }
       avatarState = AvatarState.Loading
       if (!component.setSystemAvatar(bytes, "avatar.webp")) {

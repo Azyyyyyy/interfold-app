@@ -59,10 +59,10 @@ class ImageCropper(
   }
 
   suspend fun getCompressedImage(): ByteArray {
-    return withContext(coroutineScope.coroutineContext + Dispatchers.Default) {
-      val compressed = selectedImage.value!!.compress()
-      _selectedImage.tryEmit(null)
-      compressed
+    val compressed = withContext(coroutineScope.coroutineContext + Dispatchers.Default) {
+      selectedImage.value!!.compress()
     }
+    _selectedImage.value = null
+    return compressed
   }
 }
