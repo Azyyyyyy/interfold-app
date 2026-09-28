@@ -203,3 +203,12 @@ fun looksLikeCloudflareAccessChallenge(
   }
   return false
 }
+
+/**
+ * Writes (avatar PUT, etc.) must not treat a post-success redirect as failure.
+ * Access 302/401/403 challenges are still failures.
+ */
+fun isCompletedHttpWrite(statusCode: Int, locationHeader: String?): Boolean {
+  if (looksLikeCloudflareAccessChallenge(statusCode, locationHeader, null)) return false
+  return statusCode in 200..399
+}

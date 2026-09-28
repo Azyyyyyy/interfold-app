@@ -1,6 +1,7 @@
 package app.interfold.app.ui.model.interfaces
 
 import androidx.compose.ui.graphics.ImageBitmap
+import app.interfold.app.utils.avatarMaxCropSize
 import app.interfold.app.utils.compress
 import com.arkivanov.essenty.instancekeeper.InstanceKeeper
 import com.mr0xf00.easycrop.core.crop.CropError
@@ -21,7 +22,8 @@ import kotlinx.coroutines.withContext
 enum class AvatarState {
   Loaded,
   Preparing,
-  Loading
+  Loading,
+  Error,
 }
 
 class ImageCropper(
@@ -42,7 +44,7 @@ class ImageCropper(
 
   fun setSelectedImage(imageSrc: ImageSrc) {
     coroutineScope.launch {
-      when (val result = imageCropper.cropSrc(imageSrc)) {
+      when (val result = imageCropper.cropSrc(imageSrc, maxResultSize = avatarMaxCropSize)) {
         CropResult.Cancelled -> {}
         is CropError -> _cropError.value = result
         is CropResult.Success -> {
@@ -57,10 +59,10 @@ class ImageCropper(
   }
 
   suspend fun getCompressedImage(): ByteArray {
-    return withContext(coroutineScope.coroutineContext + Dispatchers.Default) {
-      val compressed = selectedImage.value!!.compress()
-      _selectedImage.tryEmit(null)
-      compressed
+    val compressed = withContext(coroutineScope.coroutineContext + Dispatchers.Default) {
+      selectedImage.value!!.compress()
     }
+    _selectedImage.value = null
+    return compressed
   }
 }
