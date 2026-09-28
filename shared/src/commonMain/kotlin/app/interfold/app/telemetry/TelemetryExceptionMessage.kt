@@ -13,18 +13,18 @@ private val uncaughtJsErrorTypeRegex =
 /**
  * Browser WebSocket / IndexedDB failures often reject with a DOM Event rather
  * than an Error. Kotlin/Wasm then stringifies that as `[object Event]` or a
- * `{ type: error, isTrusted: true }` dump, which is what the Activity page was
- * showing. Collapse those into a readable label and keep real messages intact.
+ * `{ type: error, isTrusted: true }` dump. Collapse those into a readable
+ * label. When the original JS value is still available,
+ * [platformExceptionAttributes] supplies the target, source, and stack first.
  */
 internal fun readableExceptionMessage(
   throwable: Throwable,
   fallback: String = "Unknown error",
 ): String {
-  normalizeOpaqueJsObjectMessage(throwable.message)?.takeIf { it.isNotBlank() }?.let { return it }
-  throwable.cause?.let { cause ->
-    normalizeOpaqueJsObjectMessage(cause.message)?.takeIf { it.isNotBlank() }?.let { return it }
-  }
-  return throwable::class.simpleName?.takeIf { it.isNotBlank() } ?: fallback
+  platformExceptionAttributes(throwable)["exception.message"]
+    ?.takeIf { it.isNotBlank() }
+    ?.let { return it }
+  return fallbackExceptionMessage(throwable, fallback)
 }
 
 internal fun readableExceptionType(throwable: Throwable): String {
@@ -33,10 +33,45 @@ internal fun readableExceptionType(throwable: Throwable): String {
   return throwable::class.simpleName?.takeIf { it.isNotBlank() } ?: "Throwable"
 }
 
-private fun jsErrorTypeFromMessage(message: String?): String? {
+/**
+ * Message plus the extra activity fields (type, source, target, stack) for a
+ * throwable. Wasm fills the extra fields from the live JS error or event.
+ */
+@PublishedApi
+internal fun exceptionActivityAttributes(throwable: Throwable): Map<String, String> {
+  val platform = platformExceptionAttributes(throwable)
+  val message = platform["exception.message"]?.takeIf { it.isNotBlank() }
+    ?: fallbackExceptionMessage(throwable)
+  return buildMap {
+    put(
+      "exception.type",
+      platform["exception.type"]?.takeIf { it.isNotBlank() } ?: readableExceptionType(throwable),
+    )
+    put("exception.message", message)
+    platform.forEach { (key, value) ->
+      if (value.isBlank() || key == "exception.type" || key == "exception.message") return@forEach
+      put(key, value)
+    }
+  }
+}
+
+internal expect fun platformExceptionAttributes(throwable: Throwable): Map<String, String>
+
+internal fun jsErrorTypeFromMessage(message: String?): String? {
   val trimmed = message?.trim().orEmpty()
   if (trimmed.isEmpty()) return null
   return uncaughtJsErrorTypeRegex.find(trimmed)?.groupValues?.get(1)
+}
+
+private fun fallbackExceptionMessage(
+  throwable: Throwable,
+  fallback: String = "Unknown error",
+): String {
+  normalizeOpaqueJsObjectMessage(throwable.message)?.takeIf { it.isNotBlank() }?.let { return it }
+  throwable.cause?.let { cause ->
+    normalizeOpaqueJsObjectMessage(cause.message)?.takeIf { it.isNotBlank() }?.let { return it }
+  }
+  return throwable::class.simpleName?.takeIf { it.isNotBlank() } ?: fallback
 }
 
 internal fun normalizeOpaqueJsObjectMessage(text: String?): String? {

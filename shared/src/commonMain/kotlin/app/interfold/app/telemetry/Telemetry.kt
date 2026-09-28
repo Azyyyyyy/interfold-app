@@ -26,7 +26,7 @@ object Telemetry {
   val discovery: StateFlow<OtlpDiscoveryState> = _discovery.asStateFlow()
 
   private var lastExportKey: String? = null
-  private var lastUncaughtMessage: String? = null
+  private var lastUncaughtFingerprint: String? = null
   private var lastUncaughtAtMillis: Long = 0L
 
   fun install() {
@@ -93,16 +93,41 @@ object Telemetry {
     )
   }
 
-  fun recordException(throwable: Throwable) {
-    val message = readableExceptionMessage(throwable)
+  fun recordException(
+    throwable: Throwable,
+    extraAttributes: Map<String, String> = emptyMap(),
+  ) {
+    val details = exceptionActivityAttributes(throwable)
+    val message = extraAttributes["exception.message"]?.takeIf { it.isNotBlank() }
+      ?: details["exception.message"].orEmpty()
     val now = Clock.System.now().toEpochMilliseconds()
-    if (message == lastUncaughtMessage && now - lastUncaughtAtMillis < 1_000L) return
-    lastUncaughtMessage = message
+    val fingerprint = listOf(
+      message,
+      extraAttributes["exception.target"] ?: details["exception.target"].orEmpty(),
+      extraAttributes["exception.source"] ?: details["exception.source"].orEmpty(),
+    ).joinToString("\u0000")
+    if (fingerprint == lastUncaughtFingerprint && now - lastUncaughtAtMillis < 1_000L) return
+    lastUncaughtFingerprint = fingerprint
     lastUncaughtAtMillis = now
-    val attrs = mapOf(
-      "exception.type" to readableExceptionType(throwable),
-      "exception.message" to message,
-    )
+    val attrs = buildMap {
+      put(
+        "exception.type",
+        sequenceOf(
+          extraAttributes["exception.type"],
+          details["exception.type"],
+          readableExceptionType(throwable),
+        ).firstOrNull { !it.isNullOrBlank() } ?: "Throwable",
+      )
+      put("exception.message", message)
+      for ((key, value) in details) {
+        if (value.isBlank() || key == "exception.type" || key == "exception.message") continue
+        put(key, value)
+      }
+      for ((key, value) in extraAttributes) {
+        if (value.isBlank() || key == "exception.type" || key == "exception.message") continue
+        put(key, value)
+      }
+    }
     ClientActivityStore.record(
       name = "uncaught.exception",
       scope = ActivityScope.APP,
@@ -131,12 +156,13 @@ object Telemetry {
       finishSpan(name, ActivityStatus.OK, startedAt, attributes, null)
       result
     } catch (e: Exception) {
+      val details = exceptionActivityAttributes(e)
       finishSpan(
         name,
         ActivityStatus.ERROR,
         startedAt,
-        attributes + ("exception.message" to (e.message ?: "")),
-        e.message,
+        attributes + details,
+        details["exception.message"],
       )
       throw e
     }
@@ -153,12 +179,13 @@ object Telemetry {
       finishSpan(name, ActivityStatus.OK, startedAt, attributes, null)
       result
     } catch (e: Exception) {
+      val details = exceptionActivityAttributes(e)
       finishSpan(
         name,
         ActivityStatus.ERROR,
         startedAt,
-        attributes + ("exception.message" to (e.message ?: "")),
-        e.message,
+        attributes + details,
+        details["exception.message"],
       )
       throw e
     }
