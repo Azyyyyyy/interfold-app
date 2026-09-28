@@ -1,5 +1,6 @@
 package app.interfold.app.api
 
+import app.interfold.app.telemetry.installOpenTelemetryKtorClient
 import app.interfold.app.utils.globalSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.darwin.Darwin
@@ -10,16 +11,19 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 
 actual val client: HttpClient = HttpClient(Darwin) {
+  followRedirects = false
   install(WebSockets)
   install(ContentNegotiation) {
     json(globalSerializer)
   }
+  installCloudflareAccessHeaders()
 
   engine {
     configureRequest {
       setAllowsCellularAccess(true)
     }
   }
+  installOpenTelemetryKtorClient()
 }
 
 internal actual fun connectToPhoenixChannel(

@@ -130,8 +130,8 @@ internal class AlterJournalEntryViewComponentImpl(
     }
 
     lifecycle.doOnDestroy {
-      if(model.entryHasChanged.value && model.saveState.value == SaveState.NotSaved) {
-        coroutineScope.launch(Dispatchers.Default) {
+      if (model.entryHasChanged.value && model.saveState.value == SaveState.NotSaved) {
+        (api as ApiInterfaceImpl).launchIO {
           doPatchRequest()
         }
       }
@@ -236,6 +236,7 @@ internal class AlterJournalEntryViewComponentImpl(
     override fun updateTitle(title: String): Result<String> {
       if (title.length > 99) return Result.failure(IllegalArgumentException("Title too long"))
       _title.value = title
+      _saveState.value = SaveState.NotSaved
       return Result.success(title)
     }
 
@@ -243,6 +244,7 @@ internal class AlterJournalEntryViewComponentImpl(
       if (_initialContentState.value !is JournalContentState.Ready) return Result.failure(IllegalStateException("Initial content not ready"))
       if (content.length > 29_999) return Result.failure(IllegalArgumentException("Content too long"))
       _contentState.value = JournalContentState.Ready(content.ifBlank { null })
+      _saveState.value = SaveState.NotSaved
       return Result.success(content)
     }
 
@@ -250,6 +252,7 @@ internal class AlterJournalEntryViewComponentImpl(
       // Make sure it's a valid hex code (#000000 - #FFFFFF) with regex
       if (!(colorRegex matches color)) return
       _color.value = color
+      _saveState.value = SaveState.NotSaved
     }
 
     override fun dismissUnencryptedWarning() {

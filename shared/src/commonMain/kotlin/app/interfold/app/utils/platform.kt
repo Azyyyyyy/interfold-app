@@ -171,6 +171,22 @@ interface CommonPlatformUtilities {
     webURLOpenBehavior: WebURLOpenBehavior = WebURLOpenBehavior.NewTab
   )
 
+  /**
+   * Opens an in-app WebView (or best-effort browser on platforms without cookie access)
+   * for Cloudflare Access login / silent application-token rotation.
+   *
+   * On success [onAccessJwt] receives the `CF_Authorization` cookie value.
+   * [onFinished] is always invoked when the session UI is dismissed (success or cancel).
+   */
+  fun openCloudflareAccessSession(
+    url: String,
+    apiBaseUrl: String,
+    silent: Boolean,
+    onAccessJwt: (String) -> Unit,
+    onFinished: () -> Unit,
+    onFailed: (String) -> Unit = {},
+  )
+
   fun updateWidgets(sessionInvalidated: Boolean = false)
 
   fun performAdditionalPushNotificationSetup()

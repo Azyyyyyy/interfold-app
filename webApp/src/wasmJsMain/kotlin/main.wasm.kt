@@ -1,7 +1,6 @@
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
 import app.interfold.PlatformEventBus
-import app.interfold.app.Settings
 import app.interfold.app.ui.compose.screens.RootScreen
 import app.interfold.app.ui.model.RootComponentImpl
 import app.interfold.app.utils.FirebaseConfig
@@ -12,6 +11,7 @@ import app.interfold.app.utils.SETTINGS_LOCALSTORAGE_KEY
 import app.interfold.app.utils.globalSerializer
 import app.interfold.app.utils.migrateLegacyWasmSettings
 import app.interfold.app.utils.platformUtilities
+import app.interfold.app.utils.resolveWebClientSettings
 import app.interfold.app.utils.tryRefreshWebFCMToken
 import com.arkivanov.decompose.DefaultComponentContext
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
@@ -41,9 +41,7 @@ fun main() {
 
   consoleLog("Got token: $token")
 
-  var initialSettings = localStorage.getItem(SETTINGS_LOCALSTORAGE_KEY)?.let {
-    Settings.deserialize(it)
-  } ?: Settings()
+  var initialSettings = resolveWebClientSettings(localStorage.getItem(SETTINGS_LOCALSTORAGE_KEY))
 
   // Only prefetch server-hosted config when the user is logged in
   val isLoggedIn = initialSettings.token != null

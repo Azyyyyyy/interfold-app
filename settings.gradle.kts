@@ -1,6 +1,7 @@
 rootProject.name = "InterfoldApp"
 
 include(":shared")
+include(":pwa-service-worker-js")
 include(":androidApp")
 include(":webApp")
 include("desktopApp")

@@ -1,12 +1,15 @@
 package app.interfold.app.utils
 
 import androidx.compose.runtime.Composable
+import app.interfold.app.api.installCloudflareAccessHeadersForApiOrigin
+import app.interfold.app.telemetry.installImageFetcherTelemetry
 import io.kamel.core.config.Core
 import io.kamel.core.config.DefaultCacheSize
 import io.kamel.core.config.KamelConfig
 import io.kamel.core.config.httpUrlFetcher
 import io.kamel.core.config.takeFrom
 import io.kamel.image.config.imageBitmapDecoder
+import io.ktor.client.HttpClientConfig
 import io.ktor.client.plugins.HttpRequestRetry
 import io.ktor.http.isSuccess
 import kotlinx.datetime.LocalDate
@@ -54,6 +57,8 @@ val kamelConfig = KamelConfig {
   imageBitmapDecoder()
 
   httpUrlFetcher {
+    installApiOriginCredentials()
+    installCloudflareAccessHeadersForApiOrigin()
     httpCache(100 * 1024 * 1024 /* 100 MiB */)
 
     install(HttpRequestRetry) {
@@ -62,6 +67,7 @@ val kamelConfig = KamelConfig {
         !httpResponse.status.isSuccess()
       }
     }
+    installImageFetcherTelemetry()
   }
 }
 
@@ -73,6 +79,8 @@ val noCacheKamelConfig = KamelConfig {
   imageBitmapDecoder()
 
   httpUrlFetcher {
+    installApiOriginCredentials()
+    installCloudflareAccessHeadersForApiOrigin()
     httpCache(0)
 
     install(HttpRequestRetry) {
@@ -81,12 +89,21 @@ val noCacheKamelConfig = KamelConfig {
         !httpResponse.status.isSuccess()
       }
     }
+    installImageFetcherTelemetry()
   }
 }
 
 fun platformLog(message: String) = platformLog(null, message)
 
-expect fun platformLog(tag: String? = null, message: String)
+fun platformLog(tag: String? = null, message: String) {
+  writePlatformLog(tag, message)
+  app.interfold.app.telemetry.Telemetry.recordPlatformLog(tag, message)
+}
+
+expect fun writePlatformLog(tag: String? = null, message: String)
+
+/** Browser image fetches include cookies only for the configured API host. */
+internal expect fun HttpClientConfig<*>.installApiOriginCredentials()
 
 val globalSerializersModule = SerializersModule {
   polymorphic(app.interfold.app.api.model.Poll::class) {

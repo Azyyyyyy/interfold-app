@@ -13,6 +13,9 @@ import app.interfold.app.api.model.MyFrontItem
 import app.interfold.app.api.model.MySystem
 import app.interfold.app.api.model.MyTag
 import app.interfold.app.api.model.Poll
+import app.interfold.app.telemetry.ActivityStatus
+import app.interfold.app.telemetry.Telemetry
+import app.interfold.app.telemetry.readableExceptionMessage
 import app.interfold.app.utils.BuildConfig
 import app.interfold.app.utils.DevicePlatform
 import app.interfold.app.utils.globalSerializer
@@ -39,14 +42,20 @@ import io.ktor.client.request.post
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
+import io.ktor.http.URLBuilder
+import io.ktor.http.Url
 import io.ktor.http.isSuccess
+import io.ktor.http.takeFrom
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonObject
@@ -368,13 +377,17 @@ internal class KotlixPhoenixSocketSession(
   }
 
   private val socketFlow: SocketFlow = MutableSharedFlow(8 * 1024)
+  private var connectAttemptAtMillis = kotlin.time.Clock.System.now().toEpochMilliseconds()
   private var socket: Socket = Socket(
     url = "$endpoint/socket/websocket",
     paramsClosure = paramsClosure,
     socketFlow = socketFlow,
     scope = coroutineScope,
     transport = { url, socketFlow, decode ->
-      KtorWebSocketTransport(url, socketFlow, decode, client)
+      connectAttemptAtMillis = kotlin.time.Clock.System.now().toEpochMilliseconds()
+      KtorWebSocketTransport(url, socketFlow, decode, client) {
+        applyCloudflareAccessHeaders()
+      }
     }
   ).apply {
     logger = if (BuildConfig.isDebug()) {
@@ -390,6 +403,13 @@ internal class KotlixPhoenixSocketSession(
     socketFlow.collect {
       when (it) {
         is SocketEvent.OpenEvent -> {
+          Telemetry.finishSpan(
+            name = if (it.wasReconnect) "phoenix.reconnect" else "phoenix.connect",
+            status = ActivityStatus.OK,
+            startedAtMillis = connectAttemptAtMillis,
+            attributes = mapOf("phoenix.reconnect" to it.wasReconnect.toString()),
+            message = null,
+          )
           socketChannel?.let { channel -> socket.remove(channel) }
           socketChannel = socket.channel("system:${userID}", params = paramsClosure(it.wasReconnect))
 
@@ -404,7 +424,15 @@ internal class KotlixPhoenixSocketSession(
           }
         }
         is SocketEvent.FailureEvent -> {
-          errorPipeline.emit(it.throwable.message ?: "Unknown error")
+          val message = readableExceptionMessage(it.throwable)
+          Telemetry.finishSpan(
+            name = "phoenix.failure",
+            status = ActivityStatus.ERROR,
+            startedAtMillis = connectAttemptAtMillis,
+            attributes = mapOf("exception.message" to message),
+            message = message,
+          )
+          errorPipeline.emit(message)
         }
         is SocketEvent.MessageEvent -> {
           parseChannelMessage(it.text)?.let { msg ->
@@ -412,6 +440,14 @@ internal class KotlixPhoenixSocketSession(
           }
         }
         is SocketEvent.CloseEvent -> {
+          val normalClose = it.code.toInt() == 1000 || it.code.toInt() == 1001
+          Telemetry.finishSpan(
+            name = "phoenix.close",
+            status = if (normalClose) ActivityStatus.OK else ActivityStatus.ERROR,
+            startedAtMillis = kotlin.time.Clock.System.now().toEpochMilliseconds(),
+            attributes = mapOf("phoenix.close_code" to it.code.toString()),
+            message = "Channel closed with code ${it.code}",
+          )
           errorPipeline.emit("Channel closed with code ${it.code}")
         }
       }
@@ -498,6 +534,7 @@ internal fun parseChannelMessage(
 
 val httpBuilder: (token: String?, body: Any?) -> (HttpRequestBuilder.() -> Unit) = { token, body ->
   {
+    applyCloudflareAccessHeaders()
     headers {
       if (token != null) {
         header("Authorization", "Bearer $token")
@@ -536,6 +573,57 @@ private suspend fun put(endpoint: String, token: String, path: String, body: Any
     client.put("$endpoint/$path", httpBuilder(token, body))
   }
 
+private suspend fun putFollowingSameOriginRedirect(
+  endpoint: String,
+  token: String,
+  path: String,
+  body: Any,
+): HttpResponse {
+  var url = "$endpoint/$path"
+  repeat(2) {
+    val response = withContext(ioDispatcher) {
+      client.put(url, httpBuilder(token, body))
+    }
+    val location = response.headers[HttpHeaders.Location]
+    if (shouldReplayWriteToRedirect(url, response.status.value, location)) {
+      url = resolveHttpUrl(url, location!!)
+    } else {
+      return response
+    }
+  }
+  return withContext(ioDispatcher) {
+    client.put(url, httpBuilder(token, body))
+  }
+}
+
+private fun resolveHttpUrl(base: String, location: String): String =
+  URLBuilder(base).takeFrom(location).buildString()
+
+/**
+ * Replay a write when the origin only rewrote the URL (trailing slash, `/api`
+ * canonicalization). Do not follow Access logins or off-host CDN Locations.
+ */
+internal fun shouldReplayWriteToRedirect(
+  requestUrl: String,
+  statusCode: Int,
+  locationHeader: String?,
+): Boolean {
+  if (statusCode !in 301..308 || locationHeader.isNullOrBlank()) return false
+  if (looksLikeCloudflareAccessChallenge(statusCode, locationHeader, null)) return false
+  val req = runCatching { Url(requestUrl) }.getOrNull() ?: return false
+  val dest = runCatching { Url(resolveHttpUrl(requestUrl, locationHeader)) }.getOrNull() ?: return false
+  if (!req.protocol.name.equals(dest.protocol.name, ignoreCase = true) ||
+    !req.host.equals(dest.host, ignoreCase = true) ||
+    req.port != dest.port
+  ) {
+    return false
+  }
+  val reqPath = req.encodedPath.trimEnd('/')
+  val destPath = dest.encodedPath.trimEnd('/')
+  return reqPath.equals(destPath, ignoreCase = true) ||
+    destPath.startsWith("/api/", ignoreCase = true)
+}
+
 /**
  * Sends a DELETE request to the Interfold API.
  *
@@ -550,30 +638,31 @@ private suspend fun delete(endpoint: String, token: String, path: String, body: 
     client.delete("$endpoint/$path", httpBuilder(token, body))
   }
 
+private fun avatarMultipart(bytes: ByteArray, fileName: String) =
+  MultiPartFormDataContent(
+    formData {
+      append("file", bytes, Headers.build {
+        append(HttpHeaders.ContentType, "image/${fileName.substringAfterLast(".")}")
+        append(HttpHeaders.ContentDisposition, "form-data; name=\"file\"; filename=\"${fileName}\"")
+      })
+    },
+    boundary = "InterfoldBoundary",
+  )
+
 suspend fun setAlterAvatar(endpoint: String, token: String, alterID: Int, bytes: ByteArray, fileName: String) =
-  put(
-    endpoint, token, "systems/me/alters/$alterID/avatar", MultiPartFormDataContent(
-      formData {
-        append("file", bytes, Headers.build {
-          append(HttpHeaders.ContentType, "image/${fileName.substringAfterLast(".")}")
-          append(HttpHeaders.ContentDisposition, "form-data; name=\"file\"; filename=\"${fileName}\"")
-        })
-      },
-      boundary = "InterfoldBoundary"
-    )
+  putFollowingSameOriginRedirect(
+    endpoint,
+    token,
+    "systems/me/alters/$alterID/avatar",
+    avatarMultipart(bytes, fileName),
   )
 
 suspend fun setSystemAvatar(endpoint: String, token: String, bytes: ByteArray, fileName: String) =
-  put(
-    endpoint, token, "settings/avatar", MultiPartFormDataContent(
-      formData {
-        append("file", bytes, Headers.build {
-          append(HttpHeaders.ContentType, "image/${fileName.substringAfterLast(".")}")
-          append(HttpHeaders.ContentDisposition, "form-data; name=\"file\"; filename=\"${fileName}\"")
-        })
-      },
-      boundary = "InterfoldBoundary"
-    )
+  putFollowingSameOriginRedirect(
+    endpoint,
+    token,
+    "settings/avatar",
+    avatarMultipart(bytes, fileName),
   )
 
 suspend fun getFrontingAlters(endpoint: String, token: String) = get(endpoint, token, "systems/me/fronting").body<APIResponse<List<MyFrontItem>>>()
@@ -621,4 +710,42 @@ suspend fun checkHealthReady(endpoint: String): Boolean =
     get(endpoint, null, "health/ready").status.isSuccess()
   } catch (e: Exception) {
     false
+  }
+
+/**
+ * Fetches `GET /auth/login-methods` from the API host (not under `/api`).
+ * @return methods plus whether the response was treated as an Access-gated challenge.
+ */
+suspend fun fetchLoginMethods(apiBaseUrl: String): Pair<LoginMethods, Boolean> =
+  withContext(ioDispatcher) {
+    val base = apiBaseUrl.trimEnd('/')
+    try {
+      withTimeout(LOGIN_METHODS_TIMEOUT_MS) {
+        val response = client.get("$base/auth/login-methods")
+        val body = response.bodyAsText()
+        val location = response.headers[HttpHeaders.Location]
+        parseLoginMethodsResponse(response.status.value, location, body)
+      }
+    } catch (e: TimeoutCancellationException) {
+      throw Exception("Timed out fetching login methods", e)
+    }
+  }
+
+@Serializable
+internal data class OtlpDiscoveryResponse(
+  @SerialName("otlpHttpEndpoint")
+  val otlpHttpEndpoint: String? = null,
+)
+
+suspend fun fetchOtlpDiscovery(endpoint: String): Pair<Int, String?> =
+  try {
+    val response = get(endpoint, null, "api/telemetry/otlp")
+    val body = if (response.status.isSuccess()) {
+      response.body<OtlpDiscoveryResponse>()
+    } else {
+      null
+    }
+    response.status.value to body?.otlpHttpEndpoint
+  } catch (_: Exception) {
+    0 to null
   }

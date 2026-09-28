@@ -180,4 +180,13 @@ Run it:
 docker run --rm -p 8080:8080 interfold-wasm:latest
 ```
 
+To point browsers that have not saved a server URL at your own API, set
+`INTERFOLD_DEFAULT_API_ENDPOINT`. Saved endpoints are left unchanged.
+
+```bash
+docker run --rm -p 8080:8080 \
+  -e INTERFOLD_DEFAULT_API_ENDPOINT=https://api.example.com \
+  interfold-wasm:latest
+```
+
 The app will be available at `http://localhost:8080`.

@@ -21,7 +21,8 @@ iosApp/iosApp.xcodeproj/*
 !iosApp/iosApp.xcodeproj/xcshareddata/**
 iosApp/Pods
 androidApp/release/androidApp-release.apk
-/androidApp/sentry.properties
+# Local notes — not for the repo
+/docs/local/
 androidApp/release/
 build_dist.log
 build_log.txt

@@ -245,6 +245,24 @@ val platformUtilities = object : PlatformUtilities {
     )
   }
 
+  override fun openCloudflareAccessSession(
+    url: String,
+    apiBaseUrl: String,
+    silent: Boolean,
+    onAccessJwt: (String) -> Unit,
+    onFinished: () -> Unit,
+    onFailed: (String) -> Unit,
+  ) {
+    presentCloudflareAccessWebView(
+      url = url,
+      apiBaseUrl = apiBaseUrl,
+      silent = silent,
+      onAccessJwt = onAccessJwt,
+      onFinished = onFinished,
+      onFailed = onFailed,
+    )
+  }
+
   override fun performAdditionalPushNotificationSetup() {
     UIApplication.sharedApplication.registerForRemoteNotifications()
   }

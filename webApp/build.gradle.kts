@@ -7,6 +7,7 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
@@ -94,7 +95,12 @@ abstract class GenerateServiceWorkerPrecacheTask : DefaultTask() {
       }
       .filter { path ->
         val ext = path.substringAfterLast('.', "").lowercase()
-        ext in allowedExts
+        // runtime-config.js is rewritten at container start and must stay out of
+        // the versioned precache.
+        ext in allowedExts &&
+          path != "/runtime-config.js" &&
+          path != "/interfold-sw.js" &&
+          path != "/service-worker.js"
       }
       .sorted()
       .distinct()
@@ -158,7 +164,35 @@ abstract class GenerateServiceWorkerPrecacheTask : DefaultTask() {
       tmp.delete()
     }
     println("[generatePrecache] updated ${swFile.absolutePath} with ${files.size} entries; APP_VERSION=$effectiveBuildId")
+
+    // Bust the unhashed JS loader URL so an already-installed SW's cache
+    // key misses and falls through to the network.
+    stampIndexHtml(File(processedDir, "index.html"), effectiveBuildId)
   }
+
+  companion object {
+    fun stampIndexHtml(file: File, buildId: String) {
+      if (!file.exists()) return
+      val original = file.readText(Charsets.UTF_8)
+      val stamped = original.replace(
+        Regex("""src=["']interfold-app\.js(?:\?v=[^"']*)?["']"""),
+        """src="interfold-app.js?v=$buildId""""
+      )
+      if (stamped == original) return
+      file.writeText(stamped, Charsets.UTF_8)
+      println("[generatePrecache] stamped ${file.absolutePath} with interfold-app.js?v=$buildId")
+    }
+  }
+}
+
+val copyInterfoldSwJs = tasks.register<Copy>("copyInterfoldSwJs") {
+  group = "build"
+  description = "Copies the Kotlin/JS worker bundle next to the stamped service-worker.js"
+  dependsOn(":pwa-service-worker-js:assembleInterfoldSw")
+  from(project(":pwa-service-worker-js").layout.buildDirectory.dir("interfold-sw")) {
+    include("interfold-sw.js", "interfold-sw.js.map")
+  }
+  into(layout.buildDirectory.dir("processedResources/wasmJs/main"))
 }
 
 val generateServiceWorkerPrecache = tasks.register<GenerateServiceWorkerPrecacheTask>("generateServiceWorkerPrecache") {
@@ -167,6 +201,7 @@ val generateServiceWorkerPrecache = tasks.register<GenerateServiceWorkerPrecache
   outputServiceWorkerFile.set(layout.buildDirectory.file("processedResources/wasmJs/main/service-worker.js"))
   buildIdEager.set(rootProject.extra["app.buildId"] as String)
   localBuild.set(rootProject.extra["app.isLocal"] as Boolean)
+  dependsOn(copyInterfoldSwJs)
   // When there's no runNumber we regenerate on every invocation so the browser
   // sees a new CACHE_NAME each local build. CI runs are deterministic (the
   // runNumber-derived buildId is stable) and can use the default up-to-date
@@ -193,6 +228,34 @@ tasks.matching { it.name == "wasmJsBrowserDevelopmentRun" || it.name == "wasmJsB
     dependsOn(generateServiceWorkerPrecache)
   }
 
+// Webpack copies index.html before generateServiceWorkerPrecache runs, so
+// stamp the distribution HTML after the copy so the baked image has the
+// versioned script URL even when the generator was already up-to-date.
+tasks.matching { it.name == "wasmJsBrowserDistribution" }
+  .configureEach {
+    val distHtml = layout.buildDirectory.file("dist/wasmJs/productionExecutable/index.html")
+    val swDist = layout.buildDirectory.file("dist/wasmJs/productionExecutable/service-worker.js")
+    val swProcessed = layout.buildDirectory.file("processedResources/wasmJs/main/service-worker.js")
+    val swJs = layout.buildDirectory.file("processedResources/wasmJs/main/interfold-sw.js")
+    val distDir = layout.buildDirectory.dir("dist/wasmJs/productionExecutable")
+    doLast {
+      val swJsFile = swJs.get().asFile
+      if (swJsFile.exists()) {
+        swJsFile.copyTo(distDir.get().asFile.resolve("interfold-sw.js"), overwrite = true)
+      }
+      val htmlFile = distHtml.get().asFile
+      val swFile = listOf(swDist.get().asFile, swProcessed.get().asFile)
+        .firstOrNull { it.exists() }
+        ?: return@doLast
+      val buildId = Regex("""const APP_VERSION = '([^']+)'""")
+        .find(swFile.readText(Charsets.UTF_8))
+        ?.groupValues
+        ?.get(1)
+        ?: return@doLast
+      GenerateServiceWorkerPrecacheTask.stampIndexHtml(htmlFile, buildId)
+    }
+  }
+
 // The development executable compile-sync task reads the generated service-worker
 // file. Declare an explicit dependency so Gradle's validation doesn't complain
 // about the implicit input/output relationship.
@@ -201,10 +264,16 @@ tasks.matching { it.name == "wasmJsDevelopmentExecutableCompileSync" }
     dependsOn(generateServiceWorkerPrecache)
   }
 
-// NOTE: do not create a compile-sync -> generateServiceWorkerPrecache dependency
-// because it can produce a circular dependency with webpack tasks. The
-// generator is instead wired to run after webpack via `finalizedBy` above and
-// should depend on copy tasks if additional ordering is required.
+// Production compile-sync also reads processedResources/wasmJs/main, where
+// copyInterfoldSwJs writes interfold-sw.js. Without this, Gradle 9 fails
+// :webApp:wasmJsBrowserDistribution (the Docker image build) with an
+// implicit-dependency error.
+// Do not route this through generateServiceWorkerPrecache: that task is
+// finalizedBy webpack, and compile-sync -> generator can cycle.
+tasks.matching { it.name == "wasmJsProductionExecutableCompileSync" }
+  .configureEach {
+    dependsOn(copyInterfoldSwJs)
+  }
 
 // Prevent Kotlin's generated process resources Copy task from copying the
 // source `service-worker.js` into processedResources, which would overwrite

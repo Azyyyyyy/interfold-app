@@ -26,6 +26,7 @@ interface SettingsComponent : CommonInterface, BackHandlerOwner {
   fun navigateToSecurity()
   fun navigateToCustomFields()
   fun navigateToOpenSourceLicenses()
+  fun navigateToActivity()
 
   fun onBackPressed()
 
@@ -37,6 +38,7 @@ interface SettingsComponent : CommonInterface, BackHandlerOwner {
     class SettingsSecurityChild(val component: SettingsSecurityComponent) : DetailsChild
     class SettingsCustomFieldsChild(val component: SettingsCustomFieldsComponent) : DetailsChild
     class SettingsOpenSourceLicensesChild(val component: SettingsOpenSourceLicensesComponent) : DetailsChild
+    class SettingsActivityChild(val component: SettingsActivityComponent) : DetailsChild
   }
 }
 
@@ -60,6 +62,7 @@ class SettingsComponentImpl(
           navigateToSecurityFun = ::navigateToSecurity,
           navigateToCustomFieldsFun = ::navigateToCustomFields,
           navigateToOpenSourceLicensesFun = ::navigateToOpenSourceLicenses,
+          navigateToActivityFun = ::navigateToActivity,
           navigateToLoginScreenFun = navigateToLoginScreen
         )
       },
@@ -73,6 +76,7 @@ class SettingsComponentImpl(
   override fun navigateToSecurity() = navigator.activateDetails(DetailsConfig.Security)
   override fun navigateToCustomFields() = navigator.activateDetails(DetailsConfig.CustomFields)
   override fun navigateToOpenSourceLicenses() = navigator.activateDetails(DetailsConfig.OpenSourceLicenses)
+  override fun navigateToActivity() = navigator.activateDetails(DetailsConfig.Activity)
 
   override fun onBackPressed() = navigator.pop()
 
@@ -119,6 +123,14 @@ class SettingsComponentImpl(
             popSelf = navigator::pop
           )
         )
+
+      is DetailsConfig.Activity ->
+        DetailsChild.SettingsActivityChild(
+          SettingsActivityComponentImpl(
+            componentContext = componentContext,
+            popSelf = navigator::pop
+          )
+        )
     }
   }
 
@@ -138,5 +150,8 @@ class SettingsComponentImpl(
 
     @Serializable
     data object OpenSourceLicenses : DetailsConfig
+
+    @Serializable
+    data object Activity : DetailsConfig
   }
 }

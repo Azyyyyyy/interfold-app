@@ -1,4 +1,4 @@
 package app.interfold.app.utils
 
-actual class FailingPlatformUtilities actual constructor() :
-  FailingPlatformUtilitiesBase(), PlatformUtilities
+actual fun failingPlatformUtilities(): PlatformUtilities =
+  object : FailingPlatformUtilitiesBase(), PlatformUtilities {}

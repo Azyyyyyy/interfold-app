@@ -2,9 +2,8 @@ package app.interfold.app.ui.compose.screens
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -24,7 +23,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -40,23 +38,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import app.interfold.app.ui.compose.components.interfoldLogoVectorPainter
 import app.interfold.app.ui.model.LoginComponent
 import app.interfold.app.ui.model.ServerHealthStatus
+import app.interfold.app.api.LoginMethodsStatus
 import app.interfold.app.utils.ColorSchemeParams
 import app.interfold.app.utils.compose
 import app.interfold.app.utils.composeColorSchemeParams
@@ -65,17 +60,18 @@ import app.interfold.app.utils.state
 import interfoldapp.shared.resources.Res
 import interfoldapp.shared.resources.app_logo
 import interfoldapp.shared.resources.apple_logo
-import interfoldapp.shared.resources.cancel
-import interfoldapp.shared.resources.direct_token_login_body
-import interfoldapp.shared.resources.direct_token_login_title
+import interfoldapp.shared.resources.cloudflare_logo
 import interfoldapp.shared.resources.discord_logo
 import interfoldapp.shared.resources.google_logo
-import interfoldapp.shared.resources.login
 import interfoldapp.shared.resources.login_apple
+import interfoldapp.shared.resources.login_cloudflare
 import interfoldapp.shared.resources.login_discord
 import interfoldapp.shared.resources.login_google
+import interfoldapp.shared.resources.login_methods_loading
+import interfoldapp.shared.resources.login_methods_none
+import interfoldapp.shared.resources.login_methods_retry
+import interfoldapp.shared.resources.login_methods_unavailable
 import interfoldapp.shared.resources.or_lowercase
-import interfoldapp.shared.resources.token
 import interfoldapp.shared.resources.welcome_body
 import interfoldapp.shared.resources.welcome_title
 import org.jetbrains.compose.resources.painterResource
@@ -85,9 +81,10 @@ fun LoginScreen(
   component: LoginComponent
 ) {
   val model by component.model.collectAsState()
-  val directTokenDialogOpen = model.directTokenDialogOpen
   val serverUrl = model.serverUrl
   val serverHealthStatus = model.serverHealthStatus
+  val loginMethods = model.loginMethods
+  val loginMethodsStatus = model.loginMethodsStatus
 
   val settings by component.settings.collectAsState()
   val reduceMotion by derive { settings.reduceMotion }
@@ -110,21 +107,36 @@ fun LoginScreen(
           modifier = Modifier.widthIn(max = 450.dp),
           verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-          DiscordLoginButton(component::logInWithDiscord)
-          Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            HorizontalDivider()
-            Column(
-              modifier = Modifier.background(MaterialTheme.colorScheme.surface),
-            ) {
-              Text(Res.string.or_lowercase.compose, style = MaterialTheme.typography.labelMedium.copy(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-              ), modifier = Modifier.padding(horizontal = 16.dp))
+          when (loginMethodsStatus) {
+            LoginMethodsStatus.Idle -> {}
+            LoginMethodsStatus.Loading -> {
+              Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+              ) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                  Res.string.login_methods_loading.compose,
+                  style = MaterialTheme.typography.bodyMedium,
+                )
+              }
             }
-          }
-          Row(modifier = Modifier.height(IntrinsicSize.Min)) {
-            GoogleLoginButton(component::logInWithGoogle, modifier = Modifier.weight(1f).fillMaxHeight())
-            Spacer(modifier = Modifier.width(8.dp))
-            AppleLoginButton(component::logInWithApple, modifier = Modifier.weight(1f).fillMaxHeight())
+            LoginMethodsStatus.Failed -> LoginMethodsMessage(
+              text = Res.string.login_methods_unavailable.compose,
+              onRetry = component::fetchLoginMethods,
+            )
+            LoginMethodsStatus.Ready -> {
+              if (loginMethods.hasAny) {
+                LoginMethodsButtons(component, loginMethods)
+              } else {
+                LoginMethodsMessage(
+                  text = Res.string.login_methods_none.compose,
+                  onRetry = component::fetchLoginMethods,
+                )
+              }
+            }
           }
           Spacer(modifier = Modifier.windowInsetsBottomHeight(WindowInsets.systemBars))
         }
@@ -150,11 +162,7 @@ fun LoginScreen(
             Image(
               painter = interfoldLogoVectorPainter(animate = !reduceMotion),
               contentDescription = Res.string.app_logo.compose,
-              modifier = Modifier.size(128.dp).clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = component::incrementDirectTokenLoginTimesPressed
-              )
+              modifier = Modifier.size(128.dp)
             )
             Spacer(modifier = Modifier.height(24.dp))
             Card(
@@ -181,15 +189,98 @@ fun LoginScreen(
           }
         }
       }
+    }
+  )
+}
 
-      if (directTokenDialogOpen) {
-        DirectTokenLoginDialog(
-          onDismissRequest = component::closeDirectTokenDialog,
-          logInWithToken = component::logInWithDirectToken
+@Composable
+private fun LoginMethodsMessage(
+  text: String,
+  onRetry: () -> Unit,
+) {
+  Column(
+    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+    horizontalAlignment = Alignment.CenterHorizontally,
+    verticalArrangement = Arrangement.spacedBy(4.dp),
+  ) {
+    Text(
+      text,
+      style = MaterialTheme.typography.bodyMedium,
+      color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+    )
+    TextButton(onClick = onRetry) {
+      Text(Res.string.login_methods_retry.compose)
+    }
+  }
+}
+
+@Composable
+private fun LoginMethodsButtons(
+  component: LoginComponent,
+  loginMethods: app.interfold.app.api.LoginMethods,
+) {
+  if (loginMethods.cloudflare) {
+    CloudflareLoginButton(component::logInWithCloudflare)
+    return
+  }
+
+  val showDiscord = loginMethods.discord
+  val showGoogle = loginMethods.google
+  val showApple = loginMethods.apple
+
+  if (showDiscord) {
+    DiscordLoginButton(component::logInWithDiscord)
+  }
+  if (showDiscord && (showGoogle || showApple)) {
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+      HorizontalDivider()
+      Column(
+        modifier = Modifier.background(MaterialTheme.colorScheme.surface),
+      ) {
+        Text(
+          Res.string.or_lowercase.compose,
+          style = MaterialTheme.typography.labelMedium.copy(
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+          ),
+          modifier = Modifier.padding(horizontal = 16.dp)
         )
       }
     }
-  )
+  }
+  if (showGoogle || showApple) {
+    Row(modifier = Modifier.height(IntrinsicSize.Min)) {
+      if (showGoogle) {
+        GoogleLoginButton(component::logInWithGoogle, modifier = Modifier.weight(1f).fillMaxHeight())
+      }
+      if (showGoogle && showApple) {
+        Spacer(modifier = Modifier.width(8.dp))
+      }
+      if (showApple) {
+        AppleLoginButton(component::logInWithApple, modifier = Modifier.weight(1f).fillMaxHeight())
+      }
+    }
+  }
+}
+
+@Composable
+private fun CloudflareLoginButton(logIn: (ColorSchemeParams) -> Unit) {
+  val colorSchemeParams = composeColorSchemeParams
+  Button(
+    onClick = { logIn(colorSchemeParams) },
+    contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+    modifier = Modifier.fillMaxWidth()
+  ) {
+    Icon(
+      painterResource(Res.drawable.cloudflare_logo),
+      contentDescription = null,
+      modifier = Modifier
+        .height(ButtonDefaults.IconSize)
+        .aspectRatio(460f / 271.2f),
+      tint = Color.Unspecified,
+    )
+    Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
+    Text(Res.string.login_cloudflare.compose)
+  }
 }
 
 @Composable
@@ -221,7 +312,10 @@ private fun ServerUrlTopBar(
       healthStatus = healthStatus,
       onUrlChange = onUrlChange,
       onCheckHealth = onCheckHealth,
-      onDismiss = { dialogOpen = false }
+      onDismiss = {
+        dialogOpen = false
+        onCheckHealth()
+      }
     )
   }
 }
@@ -343,54 +437,4 @@ private fun DiscordLoginButton(logIn: (ColorSchemeParams) -> Unit) {
     Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
     Text(Res.string.login_discord.compose)
   }
-}
-
-@Composable
-private fun DirectTokenLoginDialog(
-  onDismissRequest: () -> Unit,
-  logInWithToken: (String) -> Unit
-) {
-  val focusRequester = remember { FocusRequester() }
-
-  var token by state("")
-
-  AlertDialog(
-    onDismissRequest = onDismissRequest,
-    title = { Text(Res.string.direct_token_login_title.compose) },
-    text = {
-      LazyColumn(
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-      ) {
-        item {
-          Text(Res.string.direct_token_login_body.compose)
-        }
-        item {
-          TextField(
-            value = token,
-            onValueChange = {
-              if (it.length > 1_000) return@TextField
-              token = it
-            },
-            label = { Text(Res.string.token.compose) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
-          )
-
-          LaunchedEffect(focusRequester) {
-            focusRequester.requestFocus()
-          }
-        }
-      }
-    },
-    confirmButton = {
-      Button(onClick = { logInWithToken(token) }) {
-        Text(Res.string.login.compose)
-      }
-    },
-    dismissButton = {
-      Button(onClick = onDismissRequest) {
-        Text(Res.string.cancel.compose)
-      }
-    }
-  )
 }

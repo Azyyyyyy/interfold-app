@@ -52,6 +52,13 @@ data class SocketAdapterResponse(
 fun buildEndpointPayload(method: HttpMethod, path: String): Map<String, Any?> =
   buildEndpointPayload(method, path, "")
 
+/**
+ * Phoenix `"endpoint"` adapter payload: `method`, `path`, `body`.
+ *
+ * Callers may merge W3C `traceparent` / `tracestate` from
+ * [app.interfold.app.telemetry.Telemetry.beginEndpointSpan] as extra top-level
+ * keys. The server should ingest or ignore those fields.
+ */
 fun buildEndpointPayload(
   method: HttpMethod,
   path: String,

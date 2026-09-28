@@ -1,11 +1,20 @@
 package app.interfold.app.ui.compose.screens
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.interfold.app.ui.compose.LocalMarkdownComponents
@@ -15,17 +24,29 @@ import app.interfold.app.ui.compose.LocalSpotlightTooltipsEnabled
 import app.interfold.app.ui.compose.screens.main.MainAppScreen
 import app.interfold.app.ui.compose.screens.onboarding.OnboardingScreen
 import app.interfold.app.ui.compose.theme.InterTheme
+import app.interfold.app.ui.model.CloudflareAccessSilentRefresh
 import app.interfold.app.ui.model.RootComponent
+import app.interfold.app.api.secondsUntilAccessJwtNearExpiry
 import app.interfold.app.utils.DevicePlatform
 import app.interfold.app.utils.InitPushNotifications
 import app.interfold.app.utils.PlatformEvent
+import app.interfold.app.utils.compose
 import app.interfold.app.utils.derive
+import app.interfold.app.utils.dismissPendingWebAppUpdate
 import app.interfold.app.utils.generateMarkdownComponents
 import app.interfold.app.utils.kamelConfig
+import app.interfold.app.utils.pendingWebAppVersion
+import app.interfold.app.utils.reloadWebApp
+import app.interfold.app.utils.webAppUpdateNoticeDismissed
+import kotlinx.coroutines.flow.combine
+import interfoldapp.shared.resources.Res
+import interfoldapp.shared.resources.web_app_update_ready
+import interfoldapp.shared.resources.web_app_update_reload
 import com.arkivanov.decompose.ExperimentalDecomposeApi
 import com.arkivanov.decompose.extensions.compose.experimental.stack.ChildStack
 import io.kamel.image.config.LocalKamelConfig
-
+import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.seconds
 // If only value classes could be `const`...
 val GLOBAL_PADDING = 16.dp
 
@@ -227,6 +248,23 @@ fun RootScreen(
     }
   }
 
+  // Schedule a single foreground Access JWT rotation when we enter the near-expiry window.
+  // Restarts when the stored JWT (or skew) changes after a successful refresh — no polling loop.
+  LaunchedEffect(
+    settings.token,
+    settings.cloudflareAccessJwt,
+    settings.cloudflareAccessNearExpirySkewMinutes,
+  ) {
+    if (settings.token == null) return@LaunchedEffect
+    val waitSeconds = secondsUntilAccessJwtNearExpiry(settings.cloudflareAccessJwt) ?: return@LaunchedEffect
+    delay(waitSeconds.seconds)
+    CloudflareAccessSilentRefresh.refreshIfNeeded(
+      settings = component.settings,
+      platformUtilities = component.platformUtilities,
+      force = false,
+    )
+  }
+
   CompositionLocalProvider(
     LocalKamelConfig provides kamelConfig,
     LocalMarkdownComponents provides markdownComponents,
@@ -253,14 +291,48 @@ fun RootScreen(
       amoledMode = settings.amoledMode
     ) {
       Surface(modifier = Modifier.fillMaxSize()) {
-        ChildStack(component.stack) {
-          when (val child = it.instance) {
-            is RootComponent.Child.LoginChild -> LoginScreen(child.component)
-            is RootComponent.Child.PINEntryChild -> PINScreen(child.component)
-            is RootComponent.Child.StealthAppChild -> StealthAppScreen(child.component)
-            is RootComponent.Child.MainAppChild -> MainAppScreen(child.component)
-            is RootComponent.Child.OnboardingChild -> OnboardingScreen(child.component)
+        val updateSnackbarHostState = remember { SnackbarHostState() }
+        val updateReadyMessage = Res.string.web_app_update_ready.compose
+        val updateReloadLabel = Res.string.web_app_update_reload.compose
+
+        LaunchedEffect(updateReadyMessage, updateReloadLabel) {
+          combine(pendingWebAppVersion, webAppUpdateNoticeDismissed) { version, dismissed ->
+            version.takeUnless { dismissed }
+          }.collect { version ->
+            if (version == null) {
+              updateSnackbarHostState.currentSnackbarData?.dismiss()
+              return@collect
+            }
+            val result = updateSnackbarHostState.showSnackbar(
+              message = updateReadyMessage,
+              actionLabel = updateReloadLabel,
+              withDismissAction = true,
+              duration = SnackbarDuration.Indefinite,
+            )
+            when (result) {
+              SnackbarResult.ActionPerformed -> reloadWebApp()
+              SnackbarResult.Dismissed -> dismissPendingWebAppUpdate()
+            }
           }
+        }
+
+        Box(modifier = Modifier.fillMaxSize()) {
+          ChildStack(component.stack) {
+            when (val child = it.instance) {
+              is RootComponent.Child.LoginChild -> LoginScreen(child.component)
+              is RootComponent.Child.PINEntryChild -> PINScreen(child.component)
+              is RootComponent.Child.StealthAppChild -> StealthAppScreen(child.component)
+              is RootComponent.Child.MainAppChild -> MainAppScreen(child.component)
+              is RootComponent.Child.OnboardingChild -> OnboardingScreen(child.component)
+            }
+          }
+          SnackbarHost(
+            hostState = updateSnackbarHostState,
+            modifier = Modifier
+              .align(Alignment.BottomCenter)
+              .navigationBarsPadding()
+              .imePadding()
+          )
         }
       }
     }

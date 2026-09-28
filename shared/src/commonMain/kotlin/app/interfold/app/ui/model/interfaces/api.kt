@@ -1,6 +1,8 @@
 package app.interfold.app.ui.model.interfaces
 
 import app.interfold.app.api.APIState
+import app.interfold.app.api.isCompletedHttpWrite
+import app.interfold.app.api.looksLikeCloudflareAccessChallenge
 import app.interfold.app.api.ChannelMessage
 import app.interfold.app.api.FriendRequests
 import app.interfold.app.api.KeyResponse
@@ -33,6 +35,8 @@ import app.interfold.app.api.model.SocketInitResponse
 import app.interfold.app.api.parseAmbiguousID
 import app.interfold.app.api.toState
 import app.interfold.app.ui.compose.screens.main.hometabs.FrontHistoryItem
+import app.interfold.app.telemetry.ActivityStatus
+import app.interfold.app.telemetry.Telemetry
 import app.interfold.app.utils.MonthYearPair
 import app.interfold.app.utils.PlatformUtilities
 import app.interfold.app.utils.buildRedirectUri
@@ -44,6 +48,8 @@ import app.interfold.app.utils.sortedLocaleAware
 import com.arkivanov.essenty.instancekeeper.InstanceKeeper
 import io.ktor.client.call.body
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpMethod.Companion.Delete
 import io.ktor.http.HttpMethod.Companion.Get
@@ -61,6 +67,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.Month
 import kotlinx.datetime.TimeZone
@@ -132,7 +139,7 @@ interface ApiInterface {
   fun deleteAlter(alterID: Int)
   fun loadAlter(alterID: Int)
   fun setAlterPinned(alterID: Int, pinned: Boolean)
-  fun setAlterAvatar(alterID: Int, bytes: ByteArray, fileName: String): Any
+  suspend fun setAlterAvatar(alterID: Int, bytes: ByteArray, fileName: String): Boolean
   fun removeAlterAvatar(alterID: Int)
 
   /* --------------- FRIENDS --------------- */
@@ -204,7 +211,7 @@ interface ApiInterface {
 
   fun updateUsername(username: String)
   fun updateDescription(description: String?)
-  fun setSystemAvatar(bytes: ByteArray, fileName: String)
+  suspend fun setSystemAvatar(bytes: ByteArray, fileName: String): Boolean
   fun removeSystemAvatar()
 
   fun importSP(spToken: String, recoveryCode: String? = null)
@@ -295,51 +302,53 @@ internal class ApiInterfaceImpl(
   @OptIn(ExperimentalEncodingApi::class)
   override fun loadClient(initialToken: String) =
     coroutineScope.launch {
-      platformLog("Loading client")
-      apiEndpoint = "${settingsInterface.data.value.apiEndpoint}/api"
-      val parts = initialToken.split(".")
-      val payload = globalSerializer.decodeFromString<JsonObject>(
-        Base64.UrlSafe.withPadding(Base64.PaddingOption.PRESENT_OPTIONAL).decode(parts[1])
-          .decodeToString()
-      )
-      val userID = payload["sub"]!!.jsonPrimitive.content
-
-      token.value = initialToken
       try {
-        withContext(ioDispatcher) {
-          if (!_initComplete.value) {
-            socketSession =
-              socketSessionFactory.create(
-                token.value,
-                userID,
-                _eventFlow,
-                _errorFlow,
-                coroutineScope,
-                "${settingsInterface.data.value.apiEndpoint}/api"
-              ) { json ->
-                if (!_initComplete.value) {
-                  println(json)
-                  val response = globalSerializer.decodeFromString<SocketInitResponse>(json)
+        Telemetry.spanSuspend("loadClient") {
+          platformLog("Loading client")
+          apiEndpoint = "${settingsInterface.data.value.apiEndpoint}/api"
+          val parts = initialToken.split(".")
+          val payload = globalSerializer.decodeFromString<JsonObject>(
+            Base64.UrlSafe.withPadding(Base64.PaddingOption.PRESENT_OPTIONAL).decode(parts[1])
+              .decodeToString()
+          )
+          val userID = payload["sub"]!!.jsonPrimitive.content
 
-                  _systemMe.tryEmit(APIState.Success(response.system))
-                  if(response.batched) return@create
+          token.value = initialToken
+          withContext(ioDispatcher) {
+            if (!_initComplete.value) {
+              socketSession =
+                socketSessionFactory.create(
+                  token.value,
+                  userID,
+                  _eventFlow,
+                  _errorFlow,
+                  coroutineScope,
+                  "${settingsInterface.data.value.apiEndpoint}/api"
+                ) { json ->
+                  if (!_initComplete.value) {
+                    println(json)
+                    val response = globalSerializer.decodeFromString<SocketInitResponse>(json)
 
-                  _alters.tryEmit(APIState.Success(response.alters!!))
-                  _tags.tryEmit(APIState.Success(response.tags!!.sortedLocaleAware { it.name }))
-                  _fronts.tryEmit(APIState.Success(response.fronts!!))
+                    _systemMe.tryEmit(APIState.Success(response.system))
+                    if(response.batched) return@create
 
-                  if(settingsInterface.data.value.isSinglet) {
-                    reloadFriends(false)
-                    reloadFriendRequests(false)
+                    _alters.tryEmit(APIState.Success(response.alters!!))
+                    _tags.tryEmit(APIState.Success(response.tags!!.sortedLocaleAware { it.name }))
+                    _fronts.tryEmit(APIState.Success(response.fronts!!))
+
+                    if(settingsInterface.data.value.isSinglet) {
+                      reloadFriends(false)
+                      reloadFriendRequests(false)
+                    }
+
+                    _initComplete.tryEmit(true)
                   }
-
-                  _initComplete.tryEmit(true)
                 }
-              }
 
-            eventFlow.onEach { message ->
-              handleChannelMessage(message)
-            }.launchIn(coroutineScope)
+              eventFlow.onEach { message ->
+                handleChannelMessage(message)
+              }.launchIn(coroutineScope)
+            }
           }
         }
       } catch (_: Exception) {
@@ -1139,21 +1148,52 @@ internal class ApiInterfaceImpl(
       }
       try {
         withContext(ioDispatcher) {
-          socketSession!!.sendMessage(
-            "endpoint",
-            buildEndpointPayload(Get, endpoint)
-          ) {
-            val (_, response) = responseFromAdapterMessage<ResponseType>(it)
-            val resState = response.toState()
-            if (resState is APIState.Success) {
-              stateFlow.emit(
-                APIState.Success(
-                  postProcessorFunction?.invoke(resState.data) ?: resState.data
+          val span = Telemetry.beginEndpointSpan(Get.value, endpoint)
+          try {
+            socketSession!!.sendMessage(
+              "endpoint",
+              buildEndpointPayload(Get, endpoint) + span.propagationFields
+            ) {
+              try {
+                val (_, response) = responseFromAdapterMessage<ResponseType>(it)
+                val resState = response.toState()
+                if (resState is APIState.Success) {
+                  span.finish(
+                    status = ActivityStatus.OK,
+                    extraAttributes = mapOf("http.status" to "ok"),
+                    message = null,
+                  )
+                  stateFlow.emit(
+                    APIState.Success(
+                      postProcessorFunction?.invoke(resState.data) ?: resState.data
+                    )
+                  )
+                } else {
+                  span.finish(
+                    status = ActivityStatus.ERROR,
+                    extraAttributes = mapOf("http.status" to "error"),
+                    message = (resState as? APIState.Error)?.error,
+                  )
+                  stateFlow.emit(resState)
+                }
+              } catch (e: Exception) {
+                span.finish(
+                  status = ActivityStatus.ERROR,
+                  extraAttributes = mapOf("exception.message" to (e.message ?: "")),
+                  message = e.message,
                 )
-              )
-            } else {
-              stateFlow.emit(resState)
+                stateFlow.emit(
+                  APIState.Error("Network request failed. Are you connected to the internet?")
+                )
+              }
             }
+          } catch (e: Exception) {
+            span.finish(
+              status = ActivityStatus.ERROR,
+              extraAttributes = mapOf("exception.message" to (e.message ?: "")),
+              message = e.message,
+            )
+            throw e
           }
         }
       } catch (e: Exception) {
@@ -1221,9 +1261,9 @@ internal class ApiInterfaceImpl(
       )
     )
 
-  override fun setAlterAvatar(alterID: Int, bytes: ByteArray, fileName: String) =
-    launchIO {
-      app.interfold.app.api.setAlterAvatar(apiEndpoint, token.value, alterID, bytes, fileName).emitError()
+  override suspend fun setAlterAvatar(alterID: Int, bytes: ByteArray, fileName: String): Boolean =
+    runRawHttp {
+      app.interfold.app.api.setAlterAvatar(apiEndpoint, token.value, alterID, bytes, fileName)
     }
 
   override fun removeAlterAvatar(alterID: Int) =
@@ -1740,11 +1780,10 @@ internal class ApiInterfaceImpl(
     )
   }
 
-  override fun setSystemAvatar(bytes: ByteArray, fileName: String) {
-    launchIO {
-      app.interfold.app.api.setSystemAvatar(apiEndpoint, token.value, bytes, fileName).emitError()
+  override suspend fun setSystemAvatar(bytes: ByteArray, fileName: String): Boolean =
+    runRawHttp {
+      app.interfold.app.api.setSystemAvatar(apiEndpoint, token.value, bytes, fileName)
     }
-  }
 
   override fun removeSystemAvatar() =
     sendAPIRequest(
@@ -1814,23 +1853,39 @@ internal class ApiInterfaceImpl(
     noinline callback: ((Boolean, APIResponse<ResponseType>) -> Unit)? = null
   ) {
     launchIO {
+      val span = Telemetry.beginEndpointSpan(method.value, path)
       socketSession?.sendMessage(
         "endpoint",
-        buildEndpointPayload(method, path, body)
+        buildEndpointPayload(method, path, body) + span.propagationFields
       ) {
         try {
           val (isSuccess, response) = responseFromAdapterMessage<ResponseType>(it)
           callback?.invoke(isSuccess, response)
+          val status = if (isSuccess) ActivityStatus.OK else ActivityStatus.ERROR
+          span.finish(
+            status = status,
+            extraAttributes = mapOf("http.status" to if (isSuccess) "ok" else "error"),
+            message = response.error,
+          )
           if (!isSuccess) {
             _errorFlow.emit("Error: ${response.error ?: "Unknown error"}")
           }
         } catch (e: Exception) {
           platformLog("Failed to parse API response for $method $path: ${e.message ?: "Unknown error"}")
           platformLog("Raw API response: $it")
+          span.finish(
+            status = ActivityStatus.ERROR,
+            extraAttributes = mapOf("exception.message" to (e.message ?: "")),
+            message = e.message,
+          )
           callback?.invoke(false, APIResponse(error = "Failed to parse API response"))
           _errorFlow.emit("Error: Failed to parse API response (${e.message ?: "Unknown error"})")
         }
-      }
+      } ?: span.finish(
+        status = ActivityStatus.ERROR,
+        extraAttributes = mapOf("exception.message" to "no session"),
+        message = "no session",
+      )
     }
   }
 
@@ -1839,11 +1894,34 @@ internal class ApiInterfaceImpl(
       block()
     }
 
-  private suspend inline fun HttpResponse.emitError(): HttpResponse {
-    if (!this.status.isSuccess()) {
-      _errorFlow.emit(this.body<APIResponse<Nothing>>().error!!)
+  private suspend fun runRawHttp(block: suspend () -> HttpResponse): Boolean {
+    return try {
+      block().emitError()
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      _errorFlow.emit(e.message ?: "Request failed")
+      false
     }
-    return this
+  }
+
+  private suspend fun HttpResponse.emitError(): Boolean {
+    val location = headers[HttpHeaders.Location]
+    if (isCompletedHttpWrite(status.value, location)) {
+      return true
+    }
+    val raw = runCatching { bodyAsText() }.getOrNull()
+    if (looksLikeCloudflareAccessChallenge(status.value, location, raw)) {
+      _errorFlow.emit("Cloudflare Access blocked this request. Try signing in again.")
+      return false
+    }
+    val message = raw
+      ?.let {
+        runCatching { globalSerializer.decodeFromString<APIResponse<JsonElement?>>(it) }.getOrNull()?.error
+      }
+      ?: "Request failed (${status.value})"
+    _errorFlow.emit(message)
+    return false
   }
 
   inline fun <reified ResponseType> responseFromAdapterMessage(message: String): Pair<Boolean, APIResponse<ResponseType>> {

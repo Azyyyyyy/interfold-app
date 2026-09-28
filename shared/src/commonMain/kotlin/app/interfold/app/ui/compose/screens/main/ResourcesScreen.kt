@@ -1,6 +1,5 @@
 package app.interfold.app.ui.compose.screens.main
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -41,7 +40,6 @@ import androidx.compose.ui.unit.em
 import app.interfold.app.FontSizeScalar
 import app.interfold.app.ui.compose.LocalNavigationType
 import app.interfold.app.ui.compose.NavigationType
-import app.interfold.app.ui.compose.components.interfoldLogoVectorPainter
 import app.interfold.app.ui.compose.components.shared.InterScaffold
 import app.interfold.app.ui.compose.components.shared.InterTopBar
 import app.interfold.app.ui.compose.components.shared.OpenDrawerNavigationButton
@@ -73,11 +71,8 @@ import interfoldapp.shared.resources.mental_health_hotlines_body
 import interfoldapp.shared.resources.mental_health_hotlines_title
 import interfoldapp.shared.resources.note
 import interfoldapp.shared.resources.open
-import interfoldapp.shared.resources.our_community
 import interfoldapp.shared.resources.resources
 import interfoldapp.shared.resources.tooltip_resources_desc
-import interfoldapp.shared.resources.website_card_body
-import interfoldapp.shared.resources.website_card_title
 
 @Suppress("LocalVariableName")
 @Composable
@@ -87,7 +82,6 @@ fun ResourcesScreen(
   val settingsData by component.settings.collectAsState()
   val fontSizeScalar by derive { settingsData.fontSizeScalar }
 
-  val our_community = Res.string.our_community.compose
   val hotlines = Res.string.hotlines.compose
   val did_research_org = Res.string.did_research_org.compose
 
@@ -119,12 +113,6 @@ fun ResourcesScreen(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = GLOBAL_PADDING)
       ) {
-        ResourcesSection(
-          our_community,
-          fontSizeScalar,
-          { InterfoldWebsiteCard(openURL) }
-        )
-
         if(!DevicePlatform.isiOS) {
           ResourcesSection(
             hotlines,
@@ -284,22 +272,6 @@ private fun BasicResourceCard(
     }
   }
 }
-
-@Composable
-private fun InterfoldWebsiteCard(openURL: (String) -> Unit) =
-  BasicResourceCard(
-    title = Res.string.website_card_title.compose,
-    description = Res.string.website_card_body.compose,
-    uri = "https://interfold.co.uk",
-    iconContent = {
-      Image(
-        painter = interfoldLogoVectorPainter(),
-        contentDescription = null,
-        modifier = Modifier.size(24.dp)
-      )
-    },
-    openURL = openURL
-  )
 
 @Composable
 private fun EmergencyCrisisHotlinesCard(openURL: (String) -> Unit) =

@@ -27,7 +27,7 @@ interface ProfileComponent {
 
   fun updateDescription(description: String?)
   fun updateUsername(username: String)
-  fun setSystemAvatar(bytes: ByteArray, fileName: String)
+  suspend fun setSystemAvatar(bytes: ByteArray, fileName: String): Boolean
   fun removeSystemAvatar()
 }
 
@@ -47,6 +47,7 @@ class ProfileComponentImpl(
 
   override fun updateUsername(username: String) = api.updateUsername(username)
   override fun updateDescription(description: String?) = api.updateDescription(description)
-  override fun setSystemAvatar(bytes: ByteArray, fileName: String) = api.setSystemAvatar(bytes, fileName)
+  override suspend fun setSystemAvatar(bytes: ByteArray, fileName: String): Boolean =
+    api.setSystemAvatar(bytes, fileName)
   override fun removeSystemAvatar() = api.removeSystemAvatar()
 }

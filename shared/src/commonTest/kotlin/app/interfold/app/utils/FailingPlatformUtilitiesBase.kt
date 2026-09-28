@@ -3,7 +3,7 @@ package app.interfold.app.utils
 import app.interfold.app.Settings
 
 /**
- * Shared scaffolding for the per-platform [FailingPlatformUtilities] actuals.
+ * Shared scaffolding for the per-platform [failingPlatformUtilities] actuals.
  * Implements every behavioural method on [CommonPlatformUtilities] with a
  * single loud-fail tripwire so any unexpected call from a code path under test
  * surfaces immediately with a clear, actionable message instead of silently
@@ -40,6 +40,14 @@ abstract class FailingPlatformUtilitiesBase : CommonPlatformUtilities {
     url: String,
     colorSchemeParams: ColorSchemeParams,
     webURLOpenBehavior: WebURLOpenBehavior,
+  ) { unsupported() }
+  override fun openCloudflareAccessSession(
+    url: String,
+    apiBaseUrl: String,
+    silent: Boolean,
+    onAccessJwt: (String) -> Unit,
+    onFinished: () -> Unit,
+    onFailed: (String) -> Unit,
   ) { unsupported() }
   override fun updateWidgets(sessionInvalidated: Boolean) { unsupported() }
   override fun performAdditionalPushNotificationSetup() { unsupported() }

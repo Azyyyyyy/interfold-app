@@ -298,6 +298,25 @@ class MainActivity : AppCompatActivity() {
         .launchUrl(this@MainActivity, url.toUri())
     }
 
+    override fun openCloudflareAccessSession(
+      url: String,
+      apiBaseUrl: String,
+      silent: Boolean,
+      onAccessJwt: (String) -> Unit,
+      onFinished: () -> Unit,
+      onFailed: (String) -> Unit,
+    ) {
+      CloudflareAccessWebViewActivity.start(
+        context = this@MainActivity,
+        url = url,
+        apiBaseUrl = apiBaseUrl,
+        silent = silent,
+        onAccessJwt = onAccessJwt,
+        onFinished = onFinished,
+        onFailed = onFailed,
+      )
+    }
+
     override fun performAdditionalPushNotificationSetup() {
       // No additional setup needed on Android
     }

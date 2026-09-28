@@ -26,6 +26,11 @@ end
 # is a CocoaPods-generated xcconfig — we can't add the include to
 # project.pbxproj without `pod install` stomping the change. Idempotent via
 # the substring guard so re-running `pod install` doesn't duplicate lines.
+#
+# Also stamp input/output paths on the Kotlin CocoaPods "Build shared"
+# script. Without them Xcode always shells out to Gradle even when
+# shared.framework is already UP-TO-DATE. ENABLE_USER_SCRIPT_SANDBOXING
+# stays NO via shared.podspec.
 post_install do |installer|
   installer.aggregate_targets.each do |target|
     target.xcconfigs.each do |config_name, _xcconfig|
@@ -38,6 +43,40 @@ post_install do |installer|
         f.puts marker
         f.puts '#include? "../../../Configuration/Version.generated.xcconfig"'
       end
+    end
+  end
+
+  repo_root = File.expand_path('..', __dir__)
+  shared_inputs = %w[
+    src/commonMain
+    src/iosMain
+    src/mobileMain
+    src/otelMain
+    build.gradle.kts
+  ].select { |rel| File.exist?(File.join(repo_root, 'shared', rel)) }
+    .map { |rel| "${PODS_TARGET_SRCROOT}/#{rel}" }
+
+  sibling_inputs = %w[
+    color_picker/src
+    kotlix/src
+    krop/src
+    multiplatform-markdown-renderer/src
+    multiplatform-markdown-renderer-m3/src
+    gradle.properties
+    gradle/libs.versions.toml
+  ].select { |rel| File.exist?(File.join(repo_root, rel)) }
+    .map { |rel| "${PODS_TARGET_SRCROOT}/../#{rel}" }
+
+  installer.pods_project.targets.each do |target|
+    target.build_phases.each do |phase|
+      next unless phase.is_a?(Xcodeproj::Project::Object::PBXShellScriptBuildPhase)
+      next unless phase.name.to_s.include?('Build shared')
+
+      phase.always_out_of_date = '0'
+      phase.input_paths = shared_inputs + sibling_inputs
+      phase.output_paths = [
+        '${PODS_TARGET_SRCROOT}/build/cocoapods/framework/shared.framework',
+      ]
     end
   end
 end

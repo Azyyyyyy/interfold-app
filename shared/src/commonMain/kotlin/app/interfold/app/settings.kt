@@ -524,12 +524,33 @@ data class Settings(
   val installServiceWorker: Boolean = false,
 
   @SerialName("api_endpoint")
-  val apiEndpoint: String = DEFAULT_API_ENDPOINT
+  val apiEndpoint: String = DEFAULT_API_ENDPOINT,
+
+  /** Cloudflare Access application JWT (`CF_Authorization` / `Cf-Access-Jwt-Assertion`). Never used as Bearer. */
+  @SerialName("cloudflare_access_jwt")
+  val cloudflareAccessJwt: String? = null,
+
+  /**
+   * Minutes before Access JWT `exp` when foreground silent rotation should run.
+   * Default matches [app.interfold.app.api.CloudflareAccessCredentials.DEFAULT_NEAR_EXPIRY_SKEW_MINUTES].
+   */
+  @SerialName("cloudflare_access_near_expiry_skew_minutes")
+  val cloudflareAccessNearExpirySkewMinutes: Int = 5,
+
+  @SerialName("share_activity_with_server")
+  val shareActivityWithServer: Boolean = false,
+
+  @SerialName("otlp_endpoint")
+  val otlpEndpoint: String = "",
+
+  @SerialName("activity_event_capacity")
+  val activityEventCapacity: Int = DEFAULT_ACTIVITY_EVENT_CAPACITY,
 ) {
   fun serialize() = globalSerializer.encodeToString(this)
 
   companion object {
     const val DEFAULT_API_ENDPOINT = "https://api.interfold.co.uk"
+    const val DEFAULT_ACTIVITY_EVENT_CAPACITY = 500
     fun deserialize(json: String) = globalSerializer.decodeFromString<Settings>(json)
   }
 }

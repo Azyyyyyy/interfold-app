@@ -7,15 +7,14 @@ import app.interfold.app.api.model.SecurityLevel
 import app.interfold.app.api.model.SocketInitResponse
 import app.interfold.app.ui.compose.screens.main.hometabs.FakeSettingsInterface
 import app.interfold.app.ui.model.interfaces.ApiInterfaceImpl
-import app.interfold.app.utils.FailingPlatformUtilities
+import app.interfold.app.utils.failingPlatformUtilities
 import app.interfold.app.utils.globalSerializer
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -37,17 +36,15 @@ import kotlin.time.Duration.Companion.seconds
  *      scripted reply doesn't push an error onto [ApiInterface.errorFlow];
  *   3. a channel event drives [ApiInterface.alters] via `handleChannelMessage`.
  *
- * Uses [runBlocking] + [withTimeout] (mirroring `:shared:desktopIntegrationTest`)
- * because [ApiInterfaceImpl.loadClient] suspends inside `withContext(ioDispatcher)`,
- * and `kotlinx.coroutines.test.runTest`'s virtual clock can't advance through a
- * real dispatcher switch. `commonTest` currently only runs on the desktop JVM
- * target; if/when iOS/wasm test source sets are added this will need revisiting.
+ * Uses [runTest] with a real-time [timeout] so this file compiles on Kotlin/Wasm
+ * (no `runBlocking` there) as well as desktop and iOS. [ApiInterfaceImpl] is
+ * constructed on [Dispatchers.Unconfined]; `loadClient().join()` waits on that
+ * job without needing virtual-time `delay`.
  */
 class ApiInterfaceImplIntegrationTest {
 
   @Test
-  fun loadClient_flipsInitComplete_andPopulatesState() = runBlocking {
-    withTimeout(5.seconds) {
+  fun loadClient_flipsInitComplete_andPopulatesState() = runTest(timeout = 10.seconds) {
       val initResponse = SocketInitResponse(
         system = sampleSystem("system-1"),
         alters = emptyList(),
@@ -68,12 +65,10 @@ class ApiInterfaceImplIntegrationTest {
       assertTrue(api.alters.value is APIState.Success, "alters should be Success after init")
       assertEquals(emptyList(), api.alters.value.ensureData)
       assertEquals("system-1", factory.lastToken?.let { decodeSub(it) })
-    }
   }
 
   @Test
-  fun createAlter_routesEndpointMessage_andDoesNotPushError() = runBlocking {
-    withTimeout(5.seconds) {
+  fun createAlter_routesEndpointMessage_andDoesNotPushError() = runTest(timeout = 10.seconds) {
       val factory = FakePhoenixSocketSessionFactory(
         socketInitResponse = globalSerializer.encodeToString(
           SocketInitResponse(
@@ -103,12 +98,10 @@ class ApiInterfaceImplIntegrationTest {
       assertEquals("POST", sent.method)
       assertEquals("/api/systems/me/alters", sent.path)
       assertTrue(sent.body.contains("\"name\":\"Test\""), "expected name in body, was: ${sent.body}")
-    }
   }
 
   @Test
-  fun channelEvent_alterCreated_appendsToAltersFlow() = runBlocking {
-    withTimeout(5.seconds) {
+  fun channelEvent_alterCreated_appendsToAltersFlow() = runTest(timeout = 10.seconds) {
       val factory = FakePhoenixSocketSessionFactory(
         socketInitResponse = globalSerializer.encodeToString(
           SocketInitResponse(
@@ -126,20 +119,17 @@ class ApiInterfaceImplIntegrationTest {
       val alter = sampleAlter(id = 42, name = "Eve")
       session.emitChannelEvent(ChannelMessage.AlterCreated(alter))
 
-      val alters = withTimeout(2.seconds) {
-        api.alters.first { it is APIState.Success && it.ensureData.any { a -> a.id == 42 } }
-      }
+      val alters = api.alters.first { it is APIState.Success && it.ensureData.any { a -> a.id == 42 } }
       assertTrue(alters is APIState.Success)
       assertEquals(listOf(42), alters.ensureData.map { it.id })
       assertEquals("Eve", alters.ensureData.single().name)
-    }
   }
 
   private fun newApi(factory: FakePhoenixSocketSessionFactory): ApiInterfaceImpl {
     val scope = CoroutineScope(Dispatchers.Unconfined + SupervisorJob())
     return ApiInterfaceImpl(
       coroutineScope = scope,
-      platformUtilities = FailingPlatformUtilities(),
+      platformUtilities = failingPlatformUtilities(),
       settingsInterface = FakeSettingsInterface(Settings(isSinglet = false)),
       socketSessionFactory = factory,
     )

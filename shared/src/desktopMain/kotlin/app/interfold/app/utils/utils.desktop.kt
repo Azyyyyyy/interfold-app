@@ -1,6 +1,7 @@
 package app.interfold.app.utils
 
 import androidx.compose.runtime.Composable
+import io.ktor.client.HttpClientConfig
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 
@@ -32,6 +33,8 @@ actual fun <T> List<T>.sortedLocaleAware(selector: (T) -> String): List<T> {
   return this // TODO
 }
 
-actual fun platformLog(tag: String?, message: String) {
+actual fun writePlatformLog(tag: String?, message: String) {
   println("[${tag ?: "INTERFOLD"}]: $message")
 }
+
+internal actual fun HttpClientConfig<*>.installApiOriginCredentials() = Unit

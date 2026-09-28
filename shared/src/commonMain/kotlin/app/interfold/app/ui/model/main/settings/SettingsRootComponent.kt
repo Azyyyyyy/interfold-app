@@ -9,6 +9,7 @@ interface SettingsRootComponent : CommonInterface {
   fun navigateToSecurity()
   fun navigateToCustomFields()
   fun navigateToOpenSourceLicenses()
+  fun navigateToActivity()
 
   fun logOut()
 }
@@ -20,6 +21,7 @@ class SettingsRootComponentImpl(
   val navigateToSecurityFun: () -> Unit,
   val navigateToCustomFieldsFun: () -> Unit,
   val navigateToOpenSourceLicensesFun: () -> Unit,
+  val navigateToActivityFun: () -> Unit,
   private val navigateToLoginScreenFun: () -> Unit
 ) : SettingsRootComponent, MainComponentContext by componentContext {
   override fun navigateToAppearance() = navigateToAppearanceFun()
@@ -27,6 +29,7 @@ class SettingsRootComponentImpl(
   override fun navigateToSecurity() = navigateToSecurityFun()
   override fun navigateToCustomFields() = navigateToCustomFieldsFun()
   override fun navigateToOpenSourceLicenses() = navigateToOpenSourceLicensesFun()
+  override fun navigateToActivity() = navigateToActivityFun()
 
   override fun logOut() {
     api.logOut()

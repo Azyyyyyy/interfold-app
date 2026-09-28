@@ -1,6 +1,7 @@
 package app.interfold.app.ui.model
 
 import app.interfold.app.Settings
+import app.interfold.app.telemetry.Telemetry
 import app.interfold.app.ui.model.interfaces.ApiInterface
 import app.interfold.app.ui.model.interfaces.ApiInterfaceImpl
 import app.interfold.app.ui.model.interfaces.SettingsInterface
@@ -84,6 +85,12 @@ class RootComponentImpl(
   private val navigator = StackNavigation<Config>()
 
   init {
+    Telemetry.install()
+    coroutineScope.launch {
+      settings.data.collect { snapshot ->
+        Telemetry.syncFromSettings(snapshot)
+      }
+    }
     if (!initialSettings.stealthModeEnabled && !initialSettings.tokenIsProtected && initialSettings.token != null) {
       tryLoadClient(initialSettings.token)
     }
