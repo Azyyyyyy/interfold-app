@@ -45,7 +45,10 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
+import io.ktor.http.URLBuilder
+import io.ktor.http.Url
 import io.ktor.http.isSuccess
+import io.ktor.http.takeFrom
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -548,12 +551,12 @@ val httpBuilder: (token: String?, body: Any?) -> (HttpRequestBuilder.() -> Unit)
 
 private suspend fun get(endpoint: String, token: String?, path: String) =
   withContext(ioDispatcher) {
-    client.get(joinApiUrl(endpoint, path), httpBuilder(token, null))
+    client.get("$endpoint/$path", httpBuilder(token, null))
   }
 
 private suspend fun post(endpoint: String, token: String, path: String, body: Any? = null) =
   withContext(ioDispatcher) {
-    client.post(joinApiUrl(endpoint, path), httpBuilder(token, body))
+    client.post("$endpoint/$path", httpBuilder(token, body))
   }
 
 /**
@@ -567,19 +570,19 @@ private suspend fun post(endpoint: String, token: String, path: String, body: An
  */
 private suspend fun put(endpoint: String, token: String, path: String, body: Any? = null) =
   withContext(ioDispatcher) {
-    client.put(joinApiUrl(endpoint, path), httpBuilder(token, body))
+    client.put("$endpoint/$path", httpBuilder(token, body))
   }
 
 private suspend fun putFollowingSameOriginRedirect(
   endpoint: String,
   token: String,
   path: String,
-  body: () -> Any,
+  body: Any,
 ): HttpResponse {
-  var url = joinApiUrl(endpoint, path)
+  var url = "$endpoint/$path"
   repeat(2) {
     val response = withContext(ioDispatcher) {
-      client.put(url, httpBuilder(token, body()))
+      client.put(url, httpBuilder(token, body))
     }
     val location = response.headers[HttpHeaders.Location]
     if (shouldReplayWriteToRedirect(url, response.status.value, location)) {
@@ -589,8 +592,36 @@ private suspend fun putFollowingSameOriginRedirect(
     }
   }
   return withContext(ioDispatcher) {
-    client.put(url, httpBuilder(token, body()))
+    client.put(url, httpBuilder(token, body))
   }
+}
+
+private fun resolveHttpUrl(base: String, location: String): String =
+  URLBuilder(base).takeFrom(location).buildString()
+
+/**
+ * Replay a write when the origin only rewrote the URL (trailing slash, `/api`
+ * canonicalization). Do not follow Access logins or off-host CDN Locations.
+ */
+internal fun shouldReplayWriteToRedirect(
+  requestUrl: String,
+  statusCode: Int,
+  locationHeader: String?,
+): Boolean {
+  if (statusCode !in 301..308 || locationHeader.isNullOrBlank()) return false
+  if (looksLikeCloudflareAccessChallenge(statusCode, locationHeader, null)) return false
+  val req = runCatching { Url(requestUrl) }.getOrNull() ?: return false
+  val dest = runCatching { Url(resolveHttpUrl(requestUrl, locationHeader)) }.getOrNull() ?: return false
+  if (!req.protocol.name.equals(dest.protocol.name, ignoreCase = true) ||
+    !req.host.equals(dest.host, ignoreCase = true) ||
+    req.port != dest.port
+  ) {
+    return false
+  }
+  val reqPath = req.encodedPath.trimEnd('/')
+  val destPath = dest.encodedPath.trimEnd('/')
+  return reqPath.equals(destPath, ignoreCase = true) ||
+    destPath.startsWith("/api/", ignoreCase = true)
 }
 
 /**
@@ -604,7 +635,7 @@ private suspend fun putFollowingSameOriginRedirect(
  */
 private suspend fun delete(endpoint: String, token: String, path: String, body: Any? = null) =
   withContext(ioDispatcher) {
-    client.delete(joinApiUrl(endpoint, path), httpBuilder(token, body))
+    client.delete("$endpoint/$path", httpBuilder(token, body))
   }
 
 private fun avatarMultipart(bytes: ByteArray, fileName: String) =
@@ -619,14 +650,20 @@ private fun avatarMultipart(bytes: ByteArray, fileName: String) =
   )
 
 suspend fun setAlterAvatar(endpoint: String, token: String, alterID: Int, bytes: ByteArray, fileName: String) =
-  putFollowingSameOriginRedirect(endpoint, token, "systems/me/alters/$alterID/avatar") {
-    avatarMultipart(bytes, fileName)
-  }
+  putFollowingSameOriginRedirect(
+    endpoint,
+    token,
+    "systems/me/alters/$alterID/avatar",
+    avatarMultipart(bytes, fileName),
+  )
 
 suspend fun setSystemAvatar(endpoint: String, token: String, bytes: ByteArray, fileName: String) =
-  putFollowingSameOriginRedirect(endpoint, token, "settings/avatar") {
-    avatarMultipart(bytes, fileName)
-  }
+  putFollowingSameOriginRedirect(
+    endpoint,
+    token,
+    "settings/avatar",
+    avatarMultipart(bytes, fileName),
+  )
 
 suspend fun getFrontingAlters(endpoint: String, token: String) = get(endpoint, token, "systems/me/fronting").body<APIResponse<List<MyFrontItem>>>()
 

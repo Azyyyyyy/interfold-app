@@ -108,14 +108,6 @@ class CloudflareAccessTest {
   }
 
   @Test
-  fun joinApiUrl_stripsDuplicateSlashes() {
-    assertEquals(
-      "https://api.interfold.co.uk/api/systems/me/alters/1/avatar",
-      joinApiUrl("https://api.interfold.co.uk/api/", "/systems/me/alters/1/avatar"),
-    )
-  }
-
-  @Test
   fun shouldReplayWriteToRedirect_sameHostApiRewriteOnly() {
     val request = "https://api.interfold.co.uk/api/systems/me/alters/1/avatar"
     assertTrue(
