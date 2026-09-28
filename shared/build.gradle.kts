@@ -78,6 +78,9 @@ kotlin {
         }
       }
     }
+    // Same module kind as webApp. Karma loads the webpack chunks as
+    // ES modules via karma.config.d/es-modules.js so import.meta is legal.
+    useEsModules()
   }
 
   applyDefaultHierarchyTemplate()
