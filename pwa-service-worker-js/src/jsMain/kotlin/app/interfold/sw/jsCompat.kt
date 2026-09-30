@@ -1,5 +1,6 @@
 package app.interfold.sw
 
+import app.interfold.app.utils.AppUpdatePolicy
 import kotlin.js.Promise
 
 internal const val SERVING_CACHE_KEY = "/__serving-cache-name"
@@ -26,9 +27,6 @@ internal fun cachesDelete(name: String): Promise<dynamic> = js("caches.delete(na
 
 @Suppress("UNUSED_PARAMETER")
 internal fun cachesMatch(request: dynamic): Promise<dynamic> = js("caches.match(request)")
-
-@Suppress("UNUSED_PARAMETER")
-internal fun fetchRaw(request: dynamic): Promise<dynamic> = js("fetch(request)")
 
 @Suppress("UNUSED_PARAMETER")
 internal fun fetchOmitCreds(url: String): Promise<dynamic> =
@@ -136,3 +134,35 @@ internal fun postVersionToSource(source: dynamic, version: String) {
 }
 
 internal fun selfOrigin(): String = js("self.location.origin") as String
+
+/**
+ * Same rule as [app.interfold.app.utils.AppUpdatePolicy.replayAccessRedirect].
+ * Installed once so every fetch handler shares it.
+ */
+internal fun installAccessAwareFetch() {
+  val replayAccessRedirect: (Boolean, String?) -> Boolean = { isNavigation, responseType ->
+    AppUpdatePolicy.replayAccessRedirect(isNavigation, responseType)
+  }
+  js(
+    """
+    self.__interfoldAccessFetch = function(request) {
+      var isNavigation = !!(request && request.mode === 'navigate');
+      // No init on navigations: an init dictionary drops mode "navigate",
+      // and Access answers that token refresh with 502.
+      var pending = isNavigation
+        ? fetch(request)
+        : fetch(request, { credentials: 'include', redirect: 'manual' });
+      return pending.then(function(resp) {
+        var type = resp ? resp.type : null;
+        if (replayAccessRedirect(isNavigation, type)) return resp;
+        if (type === 'opaqueredirect') return null;
+        return resp;
+      });
+    };
+    """
+  )
+}
+
+@Suppress("UNUSED_PARAMETER")
+internal fun accessAwareFetch(request: dynamic): Promise<dynamic> =
+  asPromise(js("self.__interfoldAccessFetch(request)"))
