@@ -443,12 +443,15 @@ jobs:
 
       # Immutable releases reject asset uploads after publish (HTTP 422).
       # Refuse before softprops tries to mutate a locked release.
+      # This job does not check out the repo, so gh cannot infer the
+      # repository from .git — pass it explicitly.
       - name: Refuse to mutate a published release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          if out=$(gh release view "${RELEASE_TAG}" --json isDraft --jq .isDraft 2>&1); then
+          if out=$(gh release view "${RELEASE_TAG}" --repo "${GH_REPO}" --json isDraft --jq .isDraft 2>&1); then
             if [ "$out" != "true" ]; then
               echo "::error::Release ${RELEASE_TAG} is already published. Immutable releases lock assets and the git tag; this workflow cannot attach or replace files. Cut a new v* tag."
               exit 1
@@ -470,6 +473,9 @@ jobs:
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: ${{ env.RELEASE_TAG }}
+          # No checkout in this job, so pin the tag to the workflow SHA
+          # instead of whatever the default branch is at publish time.
+          target_commitish: ${{ github.sha }}
           draft: true
           generate_release_notes: true
           fail_on_unmatched_files: true
