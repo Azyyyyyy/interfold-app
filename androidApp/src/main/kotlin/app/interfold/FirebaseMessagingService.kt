@@ -11,6 +11,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import app.interfold.app.api.updatePushNotificationToken
+import app.interfold.app.utils.LocalNetworkAccess
 import app.interfold.app.utils.PlatformEvent
 import app.interfold.app.utils.ioDispatcher
 import app.interfold.util.createSharedPreferences
@@ -24,6 +25,7 @@ import java.net.URL
 
 class InterfoldFirebaseMessagingService : FirebaseMessagingService() {
   override fun onCreate() {
+    LocalNetworkAccess.noteContext(applicationContext)
     // The Google Services Gradle plugin used to auto-init Firebase before the service
     // was ever instantiated. Now that we init from a server-hosted config we have to
     // do it ourselves before the base class touches FirebaseApp.getInstance().
