@@ -15,6 +15,7 @@ internal class ServiceWorkerRuntime(
   fun attach() {
     if (attached) return
     attached = true
+    installAccessAwareFetch()
     servingReady = restoreServingCache()
     addSelfEventListener("install") { event -> onInstall(event) }
     addSelfEventListener("activate") { event -> onActivate(event) }
@@ -62,7 +63,7 @@ internal class ServiceWorkerRuntime(
       """
       caches.open(name).then(function(cache) {
         return Promise.all(urls.map(function(url) {
-          return fetch(url, { credentials: 'include', redirect: 'manual' }).then(function(resp) {
+          return self.__interfoldAccessFetch(url).then(function(resp) {
             if (resp && resp.status === 200) {
               return cache.put(url, resp.clone());
             }
@@ -194,7 +195,9 @@ internal class ServiceWorkerRuntime(
     val url = js("new URL(req.url)")
     val pathname = url.pathname as String
     if (pathname.startsWith("/api/")) {
-      return catchAny(fetchRaw(req)) { cachesMatch(req) }
+      return thenAny(catchAny(accessAwareFetch(req)) { cachesMatch(req) }) { resp ->
+        resp ?: unavailableResponse()
+      }
     }
 
     val mode = req.mode?.toString()
@@ -234,20 +237,38 @@ internal class ServiceWorkerRuntime(
     return asPromise(js(
       """
       caches.open(serving).then(function(cache) {
+        var isNavigation = request && request.mode === 'navigate';
+        function cachedOrUnavailable() {
+          return cache.match(key).then(function(cached) {
+            return cached || new Response('', { status: 503, statusText: 'Service Unavailable' });
+          });
+        }
+        function fromNetwork(store) {
+          return self.__interfoldAccessFetch(request).then(function(networkResp) {
+            if (networkResp && networkResp.type === 'opaqueredirect') return networkResp;
+            if (store && networkResp && networkResp.status === 200) {
+              try { cache.put(key, networkResp.clone()); } catch (e) {}
+              return networkResp;
+            }
+            if (isNavigation) return cachedOrUnavailable();
+            return new Response('', { status: 503, statusText: 'Service Unavailable' });
+          }).catch(function() {
+            return isNavigation
+              ? cachedOrUnavailable()
+              : new Response('', { status: 503, statusText: 'Service Unavailable' });
+          });
+        }
+        if (isNavigation) {
+          // Network first so Access can refresh CF_Authorization. A pinned
+          // build still replays that redirect, but does not store the body.
+          return fromNetwork(allowNetwork);
+        }
         return cache.match(key).then(function(cached) {
           if (cached) return cached;
           if (!allowNetwork) {
             return new Response('', { status: 503, statusText: 'Service Unavailable' });
           }
-          return fetch(request, { credentials: 'include', redirect: 'manual' }).then(function(networkResp) {
-            if (networkResp && networkResp.status === 200) {
-              try { cache.put(key, networkResp.clone()); } catch (e) {}
-              return networkResp;
-            }
-            return new Response('', { status: 503, statusText: 'Service Unavailable' });
-          }).catch(function() {
-            return new Response('', { status: 503, statusText: 'Service Unavailable' });
-          });
+          return fromNetwork(true);
         });
       })
       """
@@ -265,7 +286,7 @@ internal class ServiceWorkerRuntime(
           if (!allowNetwork) {
             return new Response('', { status: 503, statusText: 'Service Unavailable' });
           }
-          return fetch(request, { credentials: 'include', redirect: 'manual' }).then(function(response) {
+          return self.__interfoldAccessFetch(request).then(function(response) {
             if (response && response.status === 200) {
               cache.put(request, response.clone());
               return response;
@@ -288,13 +309,13 @@ internal class ServiceWorkerRuntime(
       caches.open(serving).then(function(cache) {
         return cache.match(request).then(function(cachedResp) {
           if (pinned) {
-            return cachedResp || fetch(request, { credentials: 'include', redirect: 'manual' }).then(function(resp) {
+            return cachedResp || self.__interfoldAccessFetch(request).then(function(resp) {
               return (resp && resp.status === 200) ? resp : new Response('', { status: 503, statusText: 'Service Unavailable' });
             }).catch(function() {
               return new Response('', { status: 503, statusText: 'Service Unavailable' });
             });
           }
-          var networkFetch = fetch(request, { credentials: 'include', redirect: 'manual' }).then(function(networkResp) {
+          var networkFetch = self.__interfoldAccessFetch(request).then(function(networkResp) {
             if (networkResp && networkResp.status === 200) {
               cache.put(request, networkResp.clone());
               return networkResp;
