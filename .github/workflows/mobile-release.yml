@@ -1,45 +1,35 @@
-name: Mobile Release (tag)
+name: Mobile Release
 
-# Fires on any `v*` tag push (e.g. `v1.3.2`). Produces a signed Android APK +
-# AAB, an unsigned iOS .ipa, generates a SLSA v1 build-provenance attestation
-# for each artifact via actions/attest-build-provenance (visible under
-# Actions -> Attestations; verify with `gh attestation verify`), then
-# attaches the APK and .ipa to a draft GitHub Release for the tag. The
-# signed AAB stays as a 14-day workflow artifact only (grab it from the
-# Actions run for Play Console upload) — the Release page is for end-users
-# side-loading APK/IPA.
+# Manual only. Produces a signed Android APK + AAB, an unsigned iOS .ipa,
+# and a SLSA v1 build-provenance attestation for each artifact via
+# actions/attest-build-provenance (visible under Actions -> Attestations;
+# verify with `gh attestation verify`). The signed AAB stays as a 14-day
+# workflow artifact only (grab it from the Actions run for Play Console
+# upload). The Release page is for end-users side-loading APK/IPA.
 #
-# This repo has Immutable Releases enabled. CI never publishes: it only
-# creates or updates a draft (assets stay mutable). Publishing from the
-# GitHub UI locks the tag + assets and mints GitHub's release attestation
-# (tag, commit SHA, asset digests — verify with `gh release verify` /
-# `gh release verify-asset`). That is separate from the SLSA attestations
-# above. A published tag cannot have assets replaced; cut a new v* tag.
+# Immutable Releases reject `git push` of a new tag, and a draft that
+# already stores `tag_name` reserves that name so a later publish cannot
+# create the ref. This workflow does not run on tag pushes. When `publish`
+# is set it follows the bootstrapper: attach assets to a draft, then
+# `gh release edit --draft=false` in the same job. That publish creates
+# the git tag. Title and notes stay editable afterwards; assets and the
+# tag do not. A published tag cannot have assets replaced; cut a new tag.
 #
-#
-# Also runnable manually via workflow_dispatch for dry-runs. On a manual
-# run the `tag` input drives version stamping and file names (so we can
-# smoke-test without cutting a real tag), and the `publish` input gates
-# whether a draft GitHub Release is created — off by default so a dry-run
-# can never accidentally create a tag/release. Artifacts still land as
-# workflow artifacts (14-day retention) and SLSA attestations still fire
-# so the full pipeline is exercised.
+# `publish` is off by default so a dry-run cannot mint an immutable
+# release. Artifacts and SLSA attestations still land either way.
 #
 # See docs on the central versioning knobs consumed via -PappVersion.tag /
 # -PappVersion.runNumber / -PappVersion.releaseName in the root
 # build.gradle.kts "Centralised app versioning" block.
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Synthetic tag for versioning + artifact names (e.g. v0.0.0-test). No git tag is created.'
+        description: 'Release tag created when publish is on (e.g. v0.0.4). Also stamps versions and artifact names. Do not reuse a tag that already failed to publish.'
         required: true
         default: 'v0.0.0-test'
       publish:
-        description: 'Create/update a draft GitHub Release for the tag. Off = artifacts only (recommended for dry-runs).'
+        description: 'Publish a GitHub Release for the tag (assets uploaded, then draft flipped off). Off = artifacts only.'
         required: false
         type: boolean
         default: false
@@ -51,14 +41,10 @@ on:
 permissions:
   contents: read
 
-# Resolve the "release tag" that drives version stamping and file names
-# once at the workflow level. On a real tag push github.ref_name is the
-# tag itself (e.g. refs/tags/v1.3.2 -> v1.3.2). On workflow_dispatch it
-# comes from the input. Downstream steps reference env.RELEASE_TAG so
-# neither the shell nor the appversion step needs to know which trigger
-# fired us.
+# Version stamp and, when publish is on, the git tag created by the
+# release. Downstream steps reference env.RELEASE_TAG.
 env:
-  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+  RELEASE_TAG: ${{ inputs.tag }}
 
 jobs:
   # -------------------------------------------------------------------------
@@ -94,9 +80,8 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
 
       # Resolve the sticky ReleaseName marker for version stamping. The
-      # tag itself is already resolved once at workflow level into
-      # env.RELEASE_TAG (real tag on push, synthetic input on dispatch)
-      # so this step only needs to walk history for the release name.
+      # tag is already in env.RELEASE_TAG, so this step only walks history
+      # for the release name.
       - name: Compute app version inputs
         id: appversion
         run: |
@@ -404,24 +389,22 @@ jobs:
           retention-days: 14
 
   # -------------------------------------------------------------------------
-  # Aggregate: pull both artifact sets and create/update a draft GitHub
-  # Release (draft → attach → human publishes from the UI). Immutable
-  # Releases lock the tag + assets on publish and mint the release
-  # attestation then; this job never finalizes. An existing *draft* for
-  # the tag is updated in place so a failed run can be retried. A
-  # published release is fail-closed — cut a new v* tag.
+  # Aggregate: pull both artifact sets, attach them to a draft, then
+  # publish in this job. Same order as the bootstrapper: assets must be
+  # on the release before `gh release edit --draft=false`, because
+  # immutable releases lock assets at publish and that call is what
+  # creates the git tag. An existing draft for the tag is updated in
+  # place so a failed finalize can be retried. A published release is
+  # fail-closed — cut a new tag.
   #
-  # Runs unconditionally on tag pushes; on workflow_dispatch it only runs
-  # when `publish: true` is ticked. That keeps dry-run manual invocations
-  # from silently creating a git tag + draft release (softprops/action-gh-
-  # release will create the tag on the current commit if it doesn't
-  # already exist for the input tag name).
+  # Runs only when `publish: true` is ticked, so a dry-run cannot create
+  # a tag or a release.
   # -------------------------------------------------------------------------
   publish-release:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
     needs: [android-release, ios-release]
-    if: github.event_name == 'push' || inputs.publish
+    if: inputs.publish
     permissions:
       contents: write
 
@@ -464,11 +447,9 @@ jobs:
             exit 1
           fi
 
-      # softprops creates the draft if the tag has no release, or updates
-      # an existing draft in place (allowed until someone publishes).
-      # draft:true is required — publishing from the UI is what locks the
-      # release and generates `gh release verify` attestation.
-      - name: Publish draft release
+      # Draft only long enough to attach assets. softprops creates the
+      # draft if the tag has no release, or updates an existing draft.
+      - name: Attach assets to draft release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.RELEASE_TAG }}
@@ -486,3 +467,13 @@ jobs:
           files: |
             dist/*.apk
             dist/*.ipa
+
+      # Publishing creates the git tag. Title and notes stay editable;
+      # assets and the tag lock.
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release edit "${RELEASE_TAG}" --repo "${GH_REPO}" --draft=false --latest
