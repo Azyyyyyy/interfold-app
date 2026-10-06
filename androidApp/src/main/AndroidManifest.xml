@@ -68,10 +68,10 @@
 
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
-            android:value="@drawable/ic_stat_name" />
+            android:value="@drawable/inter_launcher_monochrome" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_color"
-            android:value="#4F89FD" />
+            android:value="@color/inter_logo_primary" />
     </application>
 
 </manifest>

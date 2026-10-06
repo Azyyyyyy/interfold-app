@@ -103,7 +103,7 @@ class InterfoldFirebaseMessagingService : FirebaseMessagingService() {
       .setAutoCancel(true)
       .setSound(defaultSoundUri)
       .setContentIntent(pendingIntent)
-      .setSmallIcon(R.drawable.ic_stat_name)
+      .setSmallIcon(R.drawable.inter_launcher_monochrome)
       .apply {
         if (imageURL == null) {
           return@apply
