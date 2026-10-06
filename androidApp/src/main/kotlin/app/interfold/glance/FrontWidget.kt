@@ -61,12 +61,18 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextAlign
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
+import androidx.glance.preview.ExperimentalGlancePreviewApi
+import androidx.glance.preview.Preview
+import kotlin.time.Duration.Companion.milliseconds
 import app.interfold.MainActivity
 import app.interfold.R
 import app.interfold.app.DynamicColorType
 import app.interfold.app.Settings
 import app.interfold.app.api.model.APIResponse
+import app.interfold.app.api.model.BareAlter
+import app.interfold.app.api.model.MyFront
 import app.interfold.app.api.model.MyFrontItem
+import app.interfold.app.ColorMode
 import app.interfold.app.ui.compose.theme.SchemeCache
 import app.interfold.app.ui.compose.theme.Theme
 import app.interfold.app.utils.globalSerializer
@@ -134,14 +140,37 @@ class FrontWidget : GlanceAppWidget() {
       LaunchedEffect(Unit) {
         while(true) {
           currentTime = Clock.System.now()
-          delay(10_000)
+          delay(10_000.milliseconds)
         }
       }
 
-      GlanceTheme(
+      FrontWidgetContent(size, settings, frontingAlters, currentTime)
+    }
+  }
+
+  override suspend fun providePreview(context: Context, widgetCategory: Int) {
+    val currentTime = Clock.System.now()
+
+    val dummyAlters = listOf(
+      MyFrontItem(BareAlter(id=1, name="Atlas"), MyFront(id="1", alterID = 1, timeStart = currentTime, userID = "1"), true),
+      MyFrontItem(BareAlter(id=2, name="Hyperion"), MyFront(id="2", alterID = 2, timeStart = currentTime, userID = "1"), false),
+      MyFrontItem(BareAlter(id=3, name="Gaia"), MyFront(id="3", alterID = 3, timeStart = currentTime, userID = "1"), false)
+    )
+    
+    val sharedPreferences = createSharedPreferences(context)
+    val settings = getSavedSettings(sharedPreferences)
+
+    provideContent {
+      FrontWidgetContent(LocalSize.current, settings, dummyAlters, currentTime)
+    }
+  }
+  
+  @Composable
+  private fun FrontWidgetContent(size: androidx.compose.ui.unit.DpSize, settings: Settings, frontingAlters: List<MyFrontItem>?, currentTime: Instant) {
+    GlanceTheme(
         colors = settings.themeColor.themeColors.toGlanceColorProviders(settings)
       ) {
-        if(state == null) {
+        if(frontingAlters == null) {
           Scaffold(horizontalPadding = 16.dp) {
             Column(
               modifier = Modifier.fillMaxSize(),
@@ -166,15 +195,13 @@ class FrontWidget : GlanceAppWidget() {
           return@GlanceTheme
         }
 
-        frontingAlters!!
-
         val showTitleBar = size.width >= 260.dp
         Scaffold(
           titleBar = if(showTitleBar) {
             {
               TitleBar(
                 startIcon = ImageProvider(R.drawable.inter_logo),
-                iconColor = null,
+                iconColor = GlanceTheme.colors.onSecondaryContainer,
                 textColor = GlanceTheme.colors.onSecondaryContainer,
                 title = "Currently fronting",
                 actions = {
@@ -232,7 +259,6 @@ class FrontWidget : GlanceAppWidget() {
           }
         }
       }
-    }
   }
 
   /**

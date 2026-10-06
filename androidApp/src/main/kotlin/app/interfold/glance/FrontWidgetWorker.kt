@@ -98,7 +98,7 @@ class FrontWidgetWorker(
     )
 
     return try {
-      val currentlyFronting = getFrontingAlters(settings.apiEndpoint, token)
+      val currentlyFronting = getFrontingAlters("${settings.apiEndpoint}/api", token)
       if (currentlyFronting.isError) {
         updateFrontWidget(currentlyFronting)
         return Result.success()
