@@ -190,6 +190,14 @@ interface CommonPlatformUtilities {
   fun updateWidgets(sessionInvalidated: Boolean = false)
 
   fun performAdditionalPushNotificationSetup()
+
+  /**
+   * Android 17 blocks connections to LAN addresses until the user grants local
+   * network access. Other platforms have nothing to do and return true.
+   * Returns false when the user declines, so callers can fail the attempt
+   * without waiting out a connection timeout.
+   */
+  suspend fun prepareLocalNetworkAccess(url: String): Boolean = true
 }
 
 expect interface PlatformUtilities : CommonPlatformUtilities

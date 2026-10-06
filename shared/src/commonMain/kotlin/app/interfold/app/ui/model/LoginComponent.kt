@@ -87,7 +87,9 @@ internal class LoginComponentImpl(
 
   init {
     registerStateHandler(handler)
-    fetchLoginMethods()
+    // Startup already requested local-network access for a saved LAN endpoint.
+    // Prompting again here would show a second dialog after a denial.
+    loadLoginMethods()
   }
 
   override fun logInWithGoogle(colorSchemeParams: ColorSchemeParams) = logInWithProvider("google", colorSchemeParams)
@@ -145,6 +147,10 @@ internal class LoginComponentImpl(
 
     healthCheckJob = scope.launch {
       try {
+        if (!platformUtilities.prepareLocalNetworkAccess(baseUrl)) {
+          markServerUnreachable()
+          return@launch
+        }
         val result = withContext(ioDispatcher) {
           withTimeout(LOGIN_METHODS_TIMEOUT_MS) { performHealthCheck(baseUrl) }
         }
@@ -156,7 +162,7 @@ internal class LoginComponentImpl(
         }
         if (status == ServerHealthStatus.HEALTHY || status == ServerHealthStatus.DEGRADED) {
           model.tryEmit(model.value.copy(serverHealthStatus = status))
-          fetchLoginMethods()
+          loadLoginMethods()
         } else {
           markServerUnreachable()
         }
@@ -172,7 +178,11 @@ internal class LoginComponentImpl(
     }
   }
 
-  override fun fetchLoginMethods() {
+  override fun fetchLoginMethods() = beginLoginMethods(promptForLocalNetwork = true)
+
+  private fun loadLoginMethods() = beginLoginMethods(promptForLocalNetwork = false)
+
+  private fun beginLoginMethods(promptForLocalNetwork: Boolean) {
     loginMethodsJob?.cancel()
     val baseUrl = model.value.serverUrl.trimEnd('/')
     if (baseUrl.isBlank()) {
@@ -188,6 +198,15 @@ internal class LoginComponentImpl(
     model.tryEmit(model.value.copy(loginMethodsStatus = LoginMethodsStatus.Loading))
     loginMethodsJob = scope.launch {
       try {
+        if (promptForLocalNetwork && !platformUtilities.prepareLocalNetworkAccess(baseUrl)) {
+          model.tryEmit(
+            model.value.copy(
+              loginMethods = LoginMethods(),
+              loginMethodsStatus = LoginMethodsStatus.Failed,
+            )
+          )
+          return@launch
+        }
         val (methods, _) = fetchLoginMethods(baseUrl)
         model.tryEmit(
           model.value.copy(
