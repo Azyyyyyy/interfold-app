@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Logo Colors -->
+    <color name="inter_logo_primary">#035FFE</color>
+    <color name="inter_logo_secondary">#0B2250</color>
+</resources>
