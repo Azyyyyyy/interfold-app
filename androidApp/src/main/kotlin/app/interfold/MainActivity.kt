@@ -357,7 +357,7 @@ class MainActivity : AppCompatActivity() {
 
           widget.update(context, glanceId)
 
-          FrontWidgetWorker.enqueue(context, settings, glanceId, force = true)
+          FrontWidgetWorker.enqueue(context, glanceId, force = true)
         }
       }
     }

@@ -107,9 +107,11 @@ class FrontWidget : GlanceAppWidget() {
 
     if(settings.tokenIsProtected) {
       provideContent { ErrorScreen("You must disable your Interfold PIN to use this widget.", settings) }
+      return
     }
     if(settings.token == null) {
       provideContent { ErrorScreen("You must log in to Interfold to use this widget.", settings) }
+      return
     }
 
     provideContent {
@@ -152,11 +154,12 @@ class FrontWidget : GlanceAppWidget() {
               Spacer(modifier = Modifier.height(12.dp))
               Text("Loading alters...", style = TextStyle(color = GlanceTheme.colors.onBackground, fontSize = 12.sp))
 
-              // Enqueue the worker after the composition is completed using the glanceId as
-              // tag so we can cancel all jobs in case the widget instance is deleted
+              // Enqueue once per composition. A later Settings snapshot must not
+              // REPLACE this job, or the in-flight fetch is cancelled and the
+              // spinner never leaves.
               val glanceId = LocalGlanceId.current
               SideEffect {
-                FrontWidgetWorker.enqueue(context, settings, glanceId)
+                FrontWidgetWorker.enqueue(context, glanceId, force = false)
               }
             }
           }
@@ -475,8 +478,11 @@ private fun adjustColorToneForWidgetBackground(input: Color): Color {
 private fun getImageProvider(encoded: String?): ImageProvider? {
   if(encoded == null) return null
 
-  val bytes = Base64.decode(encoded, Base64.DEFAULT)
-  val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-
-  return bitmap?.let { ImageProvider(bitmap) }
+  return try {
+    val bytes = Base64.decode(encoded, Base64.DEFAULT)
+    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    bitmap?.let { ImageProvider(bitmap) }
+  } catch (_: IllegalArgumentException) {
+    null
+  }
 }
