@@ -61,12 +61,18 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextAlign
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
+import androidx.glance.preview.ExperimentalGlancePreviewApi
+import androidx.glance.preview.Preview
+import kotlin.time.Duration.Companion.milliseconds
 import app.interfold.MainActivity
 import app.interfold.R
 import app.interfold.app.DynamicColorType
 import app.interfold.app.Settings
 import app.interfold.app.api.model.APIResponse
+import app.interfold.app.api.model.BareAlter
+import app.interfold.app.api.model.MyFront
 import app.interfold.app.api.model.MyFrontItem
+import app.interfold.app.ColorMode
 import app.interfold.app.ui.compose.theme.SchemeCache
 import app.interfold.app.ui.compose.theme.Theme
 import app.interfold.app.utils.globalSerializer
@@ -107,9 +113,11 @@ class FrontWidget : GlanceAppWidget() {
 
     if(settings.tokenIsProtected) {
       provideContent { ErrorScreen("You must disable your Interfold PIN to use this widget.", settings) }
+      return
     }
     if(settings.token == null) {
       provideContent { ErrorScreen("You must log in to Interfold to use this widget.", settings) }
+      return
     }
 
     provideContent {
@@ -132,14 +140,37 @@ class FrontWidget : GlanceAppWidget() {
       LaunchedEffect(Unit) {
         while(true) {
           currentTime = Clock.System.now()
-          delay(10_000)
+          delay(10_000.milliseconds)
         }
       }
 
-      GlanceTheme(
+      FrontWidgetContent(size, settings, frontingAlters, currentTime)
+    }
+  }
+
+  override suspend fun providePreview(context: Context, widgetCategory: Int) {
+    val currentTime = Clock.System.now()
+
+    val dummyAlters = listOf(
+      MyFrontItem(BareAlter(id=1, name="Atlas"), MyFront(id="1", alterID = 1, timeStart = currentTime, userID = "1"), true),
+      MyFrontItem(BareAlter(id=2, name="Hyperion"), MyFront(id="2", alterID = 2, timeStart = currentTime, userID = "1"), false),
+      MyFrontItem(BareAlter(id=3, name="Gaia"), MyFront(id="3", alterID = 3, timeStart = currentTime, userID = "1"), false)
+    )
+    
+    val sharedPreferences = createSharedPreferences(context)
+    val settings = getSavedSettings(sharedPreferences)
+
+    provideContent {
+      FrontWidgetContent(LocalSize.current, settings, dummyAlters, currentTime)
+    }
+  }
+  
+  @Composable
+  private fun FrontWidgetContent(size: androidx.compose.ui.unit.DpSize, settings: Settings, frontingAlters: List<MyFrontItem>?, currentTime: Instant) {
+    GlanceTheme(
         colors = settings.themeColor.themeColors.toGlanceColorProviders(settings)
       ) {
-        if(state == null) {
+        if(frontingAlters == null) {
           Scaffold(horizontalPadding = 16.dp) {
             Column(
               modifier = Modifier.fillMaxSize(),
@@ -152,18 +183,17 @@ class FrontWidget : GlanceAppWidget() {
               Spacer(modifier = Modifier.height(12.dp))
               Text("Loading alters...", style = TextStyle(color = GlanceTheme.colors.onBackground, fontSize = 12.sp))
 
-              // Enqueue the worker after the composition is completed using the glanceId as
-              // tag so we can cancel all jobs in case the widget instance is deleted
+              // Enqueue once per composition. A later Settings snapshot must not
+              // REPLACE this job, or the in-flight fetch is cancelled and the
+              // spinner never leaves.
               val glanceId = LocalGlanceId.current
               SideEffect {
-                FrontWidgetWorker.enqueue(context, settings, glanceId)
+                FrontWidgetWorker.enqueue(context, glanceId, force = false)
               }
             }
           }
           return@GlanceTheme
         }
-
-        frontingAlters!!
 
         val showTitleBar = size.width >= 260.dp
         Scaffold(
@@ -171,7 +201,7 @@ class FrontWidget : GlanceAppWidget() {
             {
               TitleBar(
                 startIcon = ImageProvider(R.drawable.inter_logo),
-                iconColor = null,
+                iconColor = GlanceTheme.colors.onSecondaryContainer,
                 textColor = GlanceTheme.colors.onSecondaryContainer,
                 title = "Currently fronting",
                 actions = {
@@ -229,7 +259,6 @@ class FrontWidget : GlanceAppWidget() {
           }
         }
       }
-    }
   }
 
   /**
@@ -475,8 +504,11 @@ private fun adjustColorToneForWidgetBackground(input: Color): Color {
 private fun getImageProvider(encoded: String?): ImageProvider? {
   if(encoded == null) return null
 
-  val bytes = Base64.decode(encoded, Base64.DEFAULT)
-  val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-
-  return bitmap?.let { ImageProvider(bitmap) }
+  return try {
+    val bytes = Base64.decode(encoded, Base64.DEFAULT)
+    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    bitmap?.let { ImageProvider(bitmap) }
+  } catch (_: IllegalArgumentException) {
+    null
+  }
 }

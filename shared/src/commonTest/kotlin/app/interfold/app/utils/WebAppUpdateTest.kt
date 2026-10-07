@@ -155,6 +155,14 @@ class WebAppUpdateTest {
   }
 
   @Test
+  fun accessTokenRefreshRedirectIsReplayedOnlyForNavigations() {
+    assertTrue(AppUpdatePolicy.replayAccessRedirect(isNavigation = true, responseType = "opaqueredirect"))
+    assertFalse(AppUpdatePolicy.replayAccessRedirect(isNavigation = false, responseType = "opaqueredirect"))
+    assertFalse(AppUpdatePolicy.replayAccessRedirect(isNavigation = true, responseType = "basic"))
+    assertFalse(AppUpdatePolicy.replayAccessRedirect(isNavigation = true, responseType = null))
+  }
+
+  @Test
   fun accessSensitivePathsBypassTheServiceWorkerFetch() {
     assertTrue(AppUpdatePolicy.isBrowserCredentialedPath("/runtime-config.js"))
     assertTrue(AppUpdatePolicy.isBrowserCredentialedPath("/interfold-sw.js"))

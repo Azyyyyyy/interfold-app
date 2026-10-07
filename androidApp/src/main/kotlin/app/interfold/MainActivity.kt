@@ -10,6 +10,7 @@ import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsIntent
@@ -18,6 +19,7 @@ import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.state.updateAppWidgetState
+import androidx.lifecycle.lifecycleScope
 import app.interfold.app.AndroidAppWrapper
 import app.interfold.app.Settings
 import app.interfold.app.ui.model.RootComponentImpl
@@ -26,6 +28,7 @@ import app.interfold.app.utils.ColorSchemeParams
 import app.interfold.app.utils.ExitApplicationType
 import app.interfold.app.utils.PlatformEvent
 import app.interfold.app.utils.PlatformUtilities
+import app.interfold.app.utils.LocalNetworkAccess
 import app.interfold.app.utils.WebURLOpenBehavior
 import app.interfold.app.utils.platformLog
 import app.interfold.glance.FrontWidget
@@ -71,6 +74,15 @@ private val alphabet = listOf(
 
 class MainActivity : AppCompatActivity() {
   private lateinit var context: Context
+
+  private val localNetworkPermission = registerForActivityResult(
+    ActivityResultContracts.RequestPermission()
+  ) { granted ->
+    LocalNetworkAccess.onPermissionResult(granted)
+    if (!granted) {
+      Toast.makeText(this, LocalNetworkAccess.DENIED_MESSAGE, Toast.LENGTH_LONG).show()
+    }
+  }
 
   private val sharedPreferences by lazy { createSharedPreferences(context) }
 
@@ -143,6 +155,9 @@ class MainActivity : AppCompatActivity() {
     override fun showAlert(message: String) {
       Toast.makeText(this.context, message, Toast.LENGTH_SHORT).show()
     }
+
+    override suspend fun prepareLocalNetworkAccess(url: String): Boolean =
+      LocalNetworkAccess.ensureForUrl(url)
 
     override val context: Context
       get() = this@MainActivity
@@ -306,15 +321,24 @@ class MainActivity : AppCompatActivity() {
       onFinished: () -> Unit,
       onFailed: (String) -> Unit,
     ) {
-      CloudflareAccessWebViewActivity.start(
-        context = this@MainActivity,
-        url = url,
-        apiBaseUrl = apiBaseUrl,
-        silent = silent,
-        onAccessJwt = onAccessJwt,
-        onFinished = onFinished,
-        onFailed = onFailed,
-      )
+      lifecycleScope.launch {
+        if (LocalNetworkAccess.endpointNeedsPrompt(apiBaseUrl) &&
+          !LocalNetworkAccess.ensureForUrl(apiBaseUrl)
+        ) {
+          onFailed(LocalNetworkAccess.DENIED_MESSAGE)
+          onFinished()
+          return@launch
+        }
+        CloudflareAccessWebViewActivity.start(
+          context = this@MainActivity,
+          url = url,
+          apiBaseUrl = apiBaseUrl,
+          silent = silent,
+          onAccessJwt = onAccessJwt,
+          onFinished = onFinished,
+          onFailed = onFailed,
+        )
+      }
     }
 
     override fun performAdditionalPushNotificationSetup() {
@@ -333,7 +357,7 @@ class MainActivity : AppCompatActivity() {
 
           widget.update(context, glanceId)
 
-          FrontWidgetWorker.enqueue(context, settings, glanceId, force = true)
+          FrontWidgetWorker.enqueue(context, glanceId, force = true)
         }
       }
     }
@@ -342,6 +366,9 @@ class MainActivity : AppCompatActivity() {
   @OptIn(DelicateCoroutinesApi::class)
   override fun onCreate(savedInstanceState: Bundle?) {
     context = this@MainActivity
+    LocalNetworkAccess.attach(this) {
+      localNetworkPermission.launch(LocalNetworkAccess.PERMISSION)
+    }
 
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
@@ -368,7 +395,24 @@ class MainActivity : AppCompatActivity() {
       Log.e("INTERFOLD", "Failed to restore stored public key: $e")
     }
 
-    // Only prefetch server-hosted config when we know the endpoint is finalised
+    // A saved LAN address has to be allowed before the first socket. Public
+    // hosts skip this so a slow DNS lookup cannot hold the first frame.
+    // Rotation uses the answer already given in this process.
+    if (LocalNetworkAccess.endpointNeedsPrompt(initialSettings.apiEndpoint)) {
+      lifecycleScope.launch {
+        LocalNetworkAccess.ensureForUrl(
+          initialSettings.apiEndpoint,
+          userInitiated = savedInstanceState == null,
+        )
+        startSession(initialSettings)
+      }
+    } else {
+      startSession(initialSettings)
+    }
+  }
+
+  @OptIn(DelicateCoroutinesApi::class)
+  private fun startSession(initialSettings: Settings) {
     val isLoggedIn = settings.token != null
 
     if (isLoggedIn) {
