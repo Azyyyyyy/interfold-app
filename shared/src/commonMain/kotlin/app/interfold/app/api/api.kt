@@ -189,6 +189,12 @@ sealed interface ChannelMessage {
   data object SPImportFailed : ChannelMessage
 
   @Serializable
+  data class OctoconImportComplete(@SerialName("alter_count") val alterCount: Int) : ChannelMessage
+
+  @Serializable
+  data object OctoconImportFailed : ChannelMessage
+
+  @Serializable
   data class DiscordAccountLinked(@SerialName("discord_id") val discordID: String) : ChannelMessage
 
   @Serializable
@@ -299,6 +305,8 @@ sealed interface ChannelMessage {
       "pk_import_failed" to typeOf<PKImportFailed>(),
       "sp_import_complete" to typeOf<SPImportComplete>(),
       "sp_import_failed" to typeOf<SPImportFailed>(),
+      "octocon_import_complete" to typeOf<OctoconImportComplete>(),
+      "octocon_import_failed" to typeOf<OctoconImportFailed>(),
 
       "discord_account_linked" to typeOf<DiscordAccountLinked>(),
       "discord_account_unlinked" to typeOf<DiscordAccountUnlinked>(),
@@ -549,12 +557,12 @@ val httpBuilder: (token: String?, body: Any?) -> (HttpRequestBuilder.() -> Unit)
   }
 }
 
-private suspend fun get(endpoint: String, token: String?, path: String) =
+internal suspend fun get(endpoint: String, token: String?, path: String) =
   withContext(ioDispatcher) {
     client.get("$endpoint/$path", httpBuilder(token, null))
   }
 
-private suspend fun post(endpoint: String, token: String, path: String, body: Any? = null) =
+internal suspend fun post(endpoint: String, token: String, path: String, body: Any? = null) =
   withContext(ioDispatcher) {
     client.post("$endpoint/$path", httpBuilder(token, body))
   }

@@ -216,6 +216,10 @@ interface ApiInterface {
 
   fun importSP(spToken: String, recoveryCode: String? = null)
   fun importPK(pkToken: String)
+  fun importOctocon(backupJson: String)
+  suspend fun fetchImportFormats(): List<String>
+  suspend fun fetchExportFormats(): List<String>
+  suspend fun exportAccount(format: String): app.interfold.app.api.AccountExportResult
 
   fun deleteAccount()
   fun wipeAlters()
@@ -983,6 +987,12 @@ internal class ApiInterfaceImpl(
       }
 
       is ChannelMessage.PKImportComplete -> {
+        reloadAlters(true)
+        reloadFronts(true)
+        reloadTags(true)
+      }
+
+      is ChannelMessage.OctoconImportComplete -> {
         reloadAlters(true)
         reloadFronts(true)
         reloadTags(true)
@@ -1801,25 +1811,75 @@ internal class ApiInterfaceImpl(
         val jwe = platformUtilities.recoveryCodeToJWE(formatted, settingsInterface.data.value)
         params["recovery_code"] = globalSerializer.encodeToJsonElement(jwe)
       }
-
-      sendAPIRequest(
-        Post,
-        "settings/import-sp",
-        buildRequestBody(params)
-      )
+      try {
+        app.interfold.app.api.importAccount(
+          apiEndpoint,
+          token.value,
+          "sp",
+          buildRequestBody(params),
+        )
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        _errorFlow.emit(e.message ?: "Import failed")
+      }
     }
   }
 
-  override fun importPK(pkToken: String) =
-    sendAPIRequest(
-      Post,
-      "settings/import-pk",
-      buildRequestBody(
-        mapOf(
-          "token" to globalSerializer.encodeToJsonElement(pkToken)
+  override fun importPK(pkToken: String) {
+    launchIO {
+      try {
+        app.interfold.app.api.importAccount(
+          apiEndpoint,
+          token.value,
+          "pk",
+          buildRequestBody(
+            mapOf(
+              "token" to globalSerializer.encodeToJsonElement(pkToken)
+            )
+          ),
         )
-      )
-    )
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        _errorFlow.emit(e.message ?: "Import failed")
+      }
+    }
+  }
+
+  override fun importOctocon(backupJson: String) {
+    launchIO {
+      try {
+        app.interfold.app.api.importAccount(
+          apiEndpoint,
+          token.value,
+          "octocon",
+          backupJson,
+        )
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        _errorFlow.emit(e.message ?: "Import failed")
+      }
+    }
+  }
+
+  override suspend fun fetchImportFormats(): List<String> =
+    try {
+      app.interfold.app.api.fetchImportFormats(apiEndpoint, token.value)
+    } catch (_: Exception) {
+      emptyList()
+    }
+
+  override suspend fun fetchExportFormats(): List<String> =
+    try {
+      app.interfold.app.api.fetchExportFormats(apiEndpoint, token.value)
+    } catch (_: Exception) {
+      emptyList()
+    }
+
+  override suspend fun exportAccount(format: String): app.interfold.app.api.AccountExportResult =
+    app.interfold.app.api.exportAccount(apiEndpoint, token.value, format)
 
   override fun deleteAccount() =
     sendAPIRequest(

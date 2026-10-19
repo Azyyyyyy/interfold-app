@@ -463,6 +463,8 @@
     <string name="logout_body">Are you sure you want to log out? This will also reset all of your local device settings.</string>
 
     <string name="import_alters">Import alters</string>
+    <string name="export_data">Export data</string>
+    <string name="export">Export</string>
 
     <string name="simply_plural">Simply Plural</string>
     <string name="import_sp_title">Import from Simply Plural</string>
@@ -471,6 +473,21 @@
     <string name="pluralkit">PluralKit</string>
     <string name="import_pk_title">Import from PluralKit</string>
     <string name="import_pk_body">To import your alters from PluralKit, you'll need your PluralKit "token" first.\n~\nTo receive this, DM the PluralKit Discord bot with the command `pk;token`, then copy the long, random string it gives you and enter it below.</string>
+
+    <string name="octocon_backup">Interfold backup</string>
+    <string name="import_octocon_title">Import Interfold backup</string>
+    <string name="import_octocon_body">Import alters, tags, fronts, and polls from an Interfold (or Octocon) backup JSON file previously exported from Settings.\n~\nChoose a `.json` backup file to begin. The import runs in the background and may take a few minutes for large accounts.</string>
+    <string name="import_octocon_choose_file">Choose backup file</string>
+    <string name="import_complete_octocon_body">Your data has been successfully imported from the Interfold backup!\n~\n**Note:** it may take a while longer for your avatars (profile pictures) to import.</string>
+    <string name="import_failed_octocon_body">Failed to import from the Interfold backup! Please check that the file is a valid export and try again.</string>
+
+    <string name="export_octocon_title">Export Interfold backup</string>
+    <string name="export_octocon_body">Download a full Interfold backup JSON of your account (user, alters, fronts, tags, and polls). You can import this file later on this or another Interfold server.</string>
+    <string name="export_pk_title">Export PluralKit file</string>
+    <string name="export_pk_body">Download a PluralKit-compatible export of your system. This can be useful for migrating data into PluralKit or other tools that accept that format.</string>
+    <string name="export_in_progress">Preparing your export…</string>
+    <string name="export_complete_body">Your export was saved successfully.</string>
+    <string name="export_failed_body">Failed to export your data. Please try again.</string>
 
     <string name="import_complete_title">Import complete!</string>
     <string name="importing_data_body">Importing your data...</string>
@@ -723,6 +740,12 @@
 
     <string name="tooltip_simply_plural_import_title">Simply Plural import</string>
     <string name="tooltip_simply_plural_import_desc">You can import your alters from the Simply Plural app into Interfold. To do this, you will need a "token" from Simply Plural, which you can get from the app's settings.\n\nThis will import all of your alters, including their names, pronouns, and profile pictures.</string>
+    <string name="tooltip_octocon_import_title">Interfold backup import</string>
+    <string name="tooltip_octocon_import_desc">Import a previously exported Interfold backup JSON file, including alters, tags, fronts, and polls.</string>
+    <string name="tooltip_octocon_export_title">Interfold backup export</string>
+    <string name="tooltip_octocon_export_desc">Download a full Interfold backup of your account that you can import later.</string>
+    <string name="tooltip_pk_export_title">PluralKit export</string>
+    <string name="tooltip_pk_export_desc">Download a PluralKit-compatible export of your system.</string>
     <string name="tooltip_plural_kit_import_title">PluralKit import</string>
     <string name="tooltip_plural_kit_import_desc">You can import your alters from the PluralKit Discord bot into Interfold. To do this, you will need a "token" from PluralKit, which you can get by DMing the PluralKit bot with the command `pk;token`.\n\nThis will import all of your alters, including their names, pronouns, and profile pictures.</string>
 
