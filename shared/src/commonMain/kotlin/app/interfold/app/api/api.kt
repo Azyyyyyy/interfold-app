@@ -58,6 +58,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.nullable
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.serializer
@@ -189,6 +191,12 @@ sealed interface ChannelMessage {
   data object SPImportFailed : ChannelMessage
 
   @Serializable
+  data class OctoconImportComplete(@SerialName("alter_count") val alterCount: Int) : ChannelMessage
+
+  @Serializable
+  data object OctoconImportFailed : ChannelMessage
+
+  @Serializable
   data class DiscordAccountLinked(@SerialName("discord_id") val discordID: String) : ChannelMessage
 
   @Serializable
@@ -299,6 +307,8 @@ sealed interface ChannelMessage {
       "pk_import_failed" to typeOf<PKImportFailed>(),
       "sp_import_complete" to typeOf<SPImportComplete>(),
       "sp_import_failed" to typeOf<SPImportFailed>(),
+      "octocon_import_complete" to typeOf<OctoconImportComplete>(),
+      "octocon_import_failed" to typeOf<OctoconImportFailed>(),
 
       "discord_account_linked" to typeOf<DiscordAccountLinked>(),
       "discord_account_unlinked" to typeOf<DiscordAccountUnlinked>(),
@@ -549,12 +559,12 @@ val httpBuilder: (token: String?, body: Any?) -> (HttpRequestBuilder.() -> Unit)
   }
 }
 
-private suspend fun get(endpoint: String, token: String?, path: String) =
+internal suspend fun get(endpoint: String, token: String?, path: String) =
   withContext(ioDispatcher) {
     client.get("$endpoint/$path", httpBuilder(token, null))
   }
 
-private suspend fun post(endpoint: String, token: String, path: String, body: Any? = null) =
+internal suspend fun post(endpoint: String, token: String, path: String, body: Any? = null) =
   withContext(ioDispatcher) {
     client.post("$endpoint/$path", httpBuilder(token, body))
   }
@@ -697,6 +707,68 @@ suspend fun fetchIOSFirebaseConfig(endpoint: String): APIResponse<app.interfold.
 
 suspend fun fetchWebFirebaseConfig(endpoint: String): APIResponse<app.interfold.app.utils.FirebaseConfig.Web> =
   get(endpoint, null, "settings/firebase-config?platform=web").body<APIResponse<app.interfold.app.utils.FirebaseConfig.Web>>()
+
+suspend fun fetchImportFormats(endpoint: String, token: String): List<String> =
+  withContext(ioDispatcher) {
+    val response = get(endpoint, token, "settings/import/formats")
+    if (!response.status.isSuccess()) {
+      error("import formats HTTP ${response.status.value}")
+    }
+    parseFormatsListBody(response.bodyAsText())
+  }
+
+suspend fun fetchExportFormats(endpoint: String, token: String): List<String> =
+  withContext(ioDispatcher) {
+    val response = get(endpoint, token, "settings/export/formats")
+    if (!response.status.isSuccess()) {
+      error("export formats HTTP ${response.status.value}")
+    }
+    parseFormatsListBody(response.bodyAsText())
+  }
+
+suspend fun exportAccount(endpoint: String, token: String, format: String): AccountExportResult =
+  withContext(ioDispatcher) {
+    val response = get(endpoint, token, "settings/export?format=$format")
+    if (!response.status.isSuccess()) {
+      val raw = runCatching { response.bodyAsText() }.getOrNull()
+      val apiError = raw?.let {
+        runCatching {
+          globalSerializer.decodeFromString(
+            APIResponse.serializer(String.serializer().nullable),
+            it,
+          )
+        }.getOrNull()?.error
+      }
+      error(apiError ?: "export HTTP ${response.status.value}")
+    }
+    AccountExportResult(
+      bytes = response.body(),
+      fileName = exportFileNameForFormat(format),
+    )
+  }
+
+suspend fun importAccount(
+  endpoint: String,
+  token: String,
+  format: String,
+  bodyJson: String,
+): ImportOperationResponse =
+  withContext(ioDispatcher) {
+    val response = post(endpoint, token, "settings/import?format=$format", bodyJson)
+    if (response.status.value !in 200..299) {
+      val raw = runCatching { response.bodyAsText() }.getOrNull()
+      val apiError = raw?.let {
+        runCatching {
+          globalSerializer.decodeFromString(
+            APIResponse.serializer(String.serializer().nullable),
+            it,
+          )
+        }.getOrNull()?.error
+      }
+      error(apiError ?: "import HTTP ${response.status.value}")
+    }
+    parseImportOperationBody(response.bodyAsText())
+  }
 
 suspend fun checkHealthLive(endpoint: String): Boolean =
   try {

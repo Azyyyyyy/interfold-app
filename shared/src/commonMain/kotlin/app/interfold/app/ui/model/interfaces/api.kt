@@ -1,6 +1,7 @@
 package app.interfold.app.ui.model.interfaces
 
 import app.interfold.app.api.APIState
+import app.interfold.app.api.AccountExportResult
 import app.interfold.app.api.isCompletedHttpWrite
 import app.interfold.app.api.looksLikeCloudflareAccessChallenge
 import app.interfold.app.api.ChannelMessage
@@ -13,6 +14,10 @@ import app.interfold.app.api.PhoenixSocketSessionFactory
 import app.interfold.app.api.SocketAdapterResponse
 import app.interfold.app.api.buildEndpointPayload
 import app.interfold.app.api.clusterFrontData
+import app.interfold.app.api.exportAccount as httpExportAccount
+import app.interfold.app.api.fetchExportFormats as httpFetchExportFormats
+import app.interfold.app.api.fetchImportFormats as httpFetchImportFormats
+import app.interfold.app.api.importAccount as httpImportAccount
 import app.interfold.app.api.model.APIError
 import app.interfold.app.api.model.APIResponse
 import app.interfold.app.api.model.AlterJournalEntry
@@ -216,6 +221,10 @@ interface ApiInterface {
 
   fun importSP(spToken: String, recoveryCode: String? = null)
   fun importPK(pkToken: String)
+  fun importOctocon(backupJson: String)
+  suspend fun fetchImportFormats(): List<String>
+  suspend fun fetchExportFormats(): List<String>
+  suspend fun exportAccount(format: String): AccountExportResult
 
   fun deleteAccount()
   fun wipeAlters()
@@ -983,6 +992,12 @@ internal class ApiInterfaceImpl(
       }
 
       is ChannelMessage.PKImportComplete -> {
+        reloadAlters(true)
+        reloadFronts(true)
+        reloadTags(true)
+      }
+
+      is ChannelMessage.OctoconImportComplete -> {
         reloadAlters(true)
         reloadFronts(true)
         reloadTags(true)
@@ -1801,25 +1816,65 @@ internal class ApiInterfaceImpl(
         val jwe = platformUtilities.recoveryCodeToJWE(formatted, settingsInterface.data.value)
         params["recovery_code"] = globalSerializer.encodeToJsonElement(jwe)
       }
-
-      sendAPIRequest(
-        Post,
-        "settings/import-sp",
-        buildRequestBody(params)
-      )
+      try {
+        httpImportAccount(apiEndpoint, token.value, "sp", buildRequestBody(params))
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        _errorFlow.emit(e.message ?: "Import failed")
+      }
     }
   }
 
-  override fun importPK(pkToken: String) =
-    sendAPIRequest(
-      Post,
-      "settings/import-pk",
-      buildRequestBody(
-        mapOf(
-          "token" to globalSerializer.encodeToJsonElement(pkToken)
+  override fun importPK(pkToken: String) {
+    launchIO {
+      try {
+        httpImportAccount(
+          apiEndpoint,
+          token.value,
+          "pk",
+          buildRequestBody(
+            mapOf(
+              "token" to globalSerializer.encodeToJsonElement(pkToken)
+            )
+          ),
         )
-      )
-    )
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        _errorFlow.emit(e.message ?: "Import failed")
+      }
+    }
+  }
+
+  override fun importOctocon(backupJson: String) {
+    launchIO {
+      try {
+        httpImportAccount(apiEndpoint, token.value, "octocon", backupJson)
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        _errorFlow.emit(e.message ?: "Import failed")
+      }
+    }
+  }
+
+  override suspend fun fetchImportFormats(): List<String> =
+    try {
+      httpFetchImportFormats(apiEndpoint, token.value)
+    } catch (_: Exception) {
+      emptyList()
+    }
+
+  override suspend fun fetchExportFormats(): List<String> =
+    try {
+      httpFetchExportFormats(apiEndpoint, token.value)
+    } catch (_: Exception) {
+      emptyList()
+    }
+
+  override suspend fun exportAccount(format: String): AccountExportResult =
+    httpExportAccount(apiEndpoint, token.value, format)
 
   override fun deleteAccount() =
     sendAPIRequest(
