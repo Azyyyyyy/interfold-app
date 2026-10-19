@@ -25,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import app.interfold.app.ui.compose.LocalChildPanelsMode
@@ -46,14 +47,11 @@ import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.model.markdownAnimations
 import com.mikepenz.markdown.model.markdownPadding
 import interfoldapp.shared.resources.Res
-import interfoldapp.shared.resources.kofi_logo
+import interfoldapp.shared.resources.github_logo
 import interfoldapp.shared.resources.open
-import interfoldapp.shared.resources.patreon_logo
 import interfoldapp.shared.resources.support_us
-import interfoldapp.shared.resources.support_us_kofi_card_body
-import interfoldapp.shared.resources.support_us_kofi_card_title
-import interfoldapp.shared.resources.support_us_patreon_card_body
-import interfoldapp.shared.resources.support_us_patreon_card_title
+import interfoldapp.shared.resources.support_us_github_sponsors_card_body
+import interfoldapp.shared.resources.support_us_github_sponsors_card_title
 import interfoldapp.shared.resources.tooltip_support_us_desc
 import interfoldapp.shared.resources.transparency
 import interfoldapp.shared.resources.transparency_text
@@ -69,10 +67,8 @@ fun SupportUsScreen(
 
   val fontSizeScalar by derive { settings.fontSizeScalar }
 
-  val openPatreon: () -> Unit =
-    remember(colorSchemeParams) { { component.openPatreon(colorSchemeParams) } }
-  val openKofi: () -> Unit =
-    remember(colorSchemeParams) { { component.openKofi(colorSchemeParams) } }
+  val openGitHubSponsors: () -> Unit =
+    remember(colorSchemeParams) { { component.openGitHubSponsors(colorSchemeParams) } }
 
   InterScaffold(
     topBar = { topAppBarState, scrollBehavior, _ ->
@@ -100,33 +96,18 @@ fun SupportUsScreen(
       ) {
         item {
           SupportUsCard(
-            onClick = openPatreon,
-            title = Res.string.support_us_patreon_card_title.compose,
-            description = Res.string.support_us_patreon_card_body.compose,
+            onClick = openGitHubSponsors,
+            title = Res.string.support_us_github_sponsors_card_title.compose,
+            description = Res.string.support_us_github_sponsors_card_body.compose,
             iconContent = {
               Image(
-                painter = painterResource(Res.drawable.patreon_logo),
+                painter = painterResource(Res.drawable.github_logo),
                 contentDescription = null,
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(24.dp),
+                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onPrimaryContainer)
               )
             },
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-          )
-        }
-        item { Spacer(modifier = Modifier.size(16.dp)) }
-        item {
-          SupportUsCard(
-            onClick = openKofi,
-            title = Res.string.support_us_kofi_card_title.compose,
-            description = Res.string.support_us_kofi_card_body.compose,
-            iconContent = {
-              Image(
-                painter = painterResource(Res.drawable.kofi_logo),
-                contentDescription = null,
-                modifier = Modifier.size(24.dp)
-              )
-            },
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
           )
         }
         item {
