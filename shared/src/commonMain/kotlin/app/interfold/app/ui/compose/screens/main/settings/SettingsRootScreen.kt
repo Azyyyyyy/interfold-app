@@ -233,8 +233,7 @@ fun SettingsRootScreen(
 
   LaunchedEffect(settingsData.apiEndpoint, system.isSuccess) {
     if (!system.isSuccess) return@LaunchedEffect
-    val endpoint = settingsData.apiEndpoint.ifBlank { "https://api.interfold.co.uk" }
-    loginMethods = runCatching { fetchLoginMethods(endpoint).first }.getOrNull()
+    loginMethods = runCatching { fetchLoginMethods(settingsData.apiEndpoint).first }.getOrNull()
     importFormats = api.fetchImportFormats()
     exportFormats = api.fetchExportFormats()
   }
@@ -403,10 +402,32 @@ fun SettingsRootScreen(
             if(!isSinglet && exportFormats.isNotEmpty()) {
               val exportItems = buildList<@Composable (CardGroupPosition) -> Unit> {
                 if ("octocon" in exportFormats) {
-                  add { SettingsExportFormat(it, api, format = "octocon") }
+                  add {
+                    SettingsExportFormat(
+                      cardGroupPosition = it,
+                      api = api,
+                      format = "octocon",
+                      label = Res.string.octocon_backup.compose,
+                      title = Res.string.export_octocon_title.compose,
+                      body = Res.string.export_octocon_body.compose,
+                      spotlightTitle = Res.string.tooltip_octocon_export_title.compose,
+                      spotlightDescription = Res.string.tooltip_octocon_export_desc.compose,
+                    )
+                  }
                 }
                 if ("pk" in exportFormats) {
-                  add { SettingsExportFormat(it, api, format = "pk") }
+                  add {
+                    SettingsExportFormat(
+                      cardGroupPosition = it,
+                      api = api,
+                      format = "pk",
+                      label = Res.string.pluralkit.compose,
+                      title = Res.string.export_pk_title.compose,
+                      body = Res.string.export_pk_body.compose,
+                      spotlightTitle = Res.string.tooltip_pk_export_title.compose,
+                      spotlightDescription = Res.string.tooltip_pk_export_desc.compose,
+                    )
+                  }
                 }
               }
               if (exportItems.isNotEmpty()) {
@@ -1286,30 +1307,14 @@ private fun SettingsExportFormat(
   cardGroupPosition: CardGroupPosition,
   api: ApiInterface,
   format: String,
+  label: String,
+  title: String,
+  body: String,
+  spotlightTitle: String,
+  spotlightDescription: String,
 ) {
   var status by state<ExportStatus>(ExportStatus.Idle)
   val scope = rememberCoroutineScope()
-
-  val title = when (format) {
-    "pk" -> Res.string.export_pk_title.compose
-    else -> Res.string.export_octocon_title.compose
-  }
-  val body = when (format) {
-    "pk" -> Res.string.export_pk_body.compose
-    else -> Res.string.export_octocon_body.compose
-  }
-  val label = when (format) {
-    "pk" -> Res.string.pluralkit.compose
-    else -> Res.string.octocon_backup.compose
-  }
-  val spotlightTitle = when (format) {
-    "pk" -> Res.string.tooltip_pk_export_title.compose
-    else -> Res.string.tooltip_octocon_export_title.compose
-  }
-  val spotlightDescription = when (format) {
-    "pk" -> Res.string.tooltip_pk_export_desc.compose
-    else -> Res.string.tooltip_octocon_export_desc.compose
-  }
 
   val (Dialog, isOpen, openDialog) = createConfirmationDialog(
     title = title,

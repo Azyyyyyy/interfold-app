@@ -1,6 +1,7 @@
 package app.interfold.app.ui.model.interfaces
 
 import app.interfold.app.api.APIState
+import app.interfold.app.api.AccountExportResult
 import app.interfold.app.api.isCompletedHttpWrite
 import app.interfold.app.api.looksLikeCloudflareAccessChallenge
 import app.interfold.app.api.ChannelMessage
@@ -13,6 +14,10 @@ import app.interfold.app.api.PhoenixSocketSessionFactory
 import app.interfold.app.api.SocketAdapterResponse
 import app.interfold.app.api.buildEndpointPayload
 import app.interfold.app.api.clusterFrontData
+import app.interfold.app.api.exportAccount as httpExportAccount
+import app.interfold.app.api.fetchExportFormats as httpFetchExportFormats
+import app.interfold.app.api.fetchImportFormats as httpFetchImportFormats
+import app.interfold.app.api.importAccount as httpImportAccount
 import app.interfold.app.api.model.APIError
 import app.interfold.app.api.model.APIResponse
 import app.interfold.app.api.model.AlterJournalEntry
@@ -219,7 +224,7 @@ interface ApiInterface {
   fun importOctocon(backupJson: String)
   suspend fun fetchImportFormats(): List<String>
   suspend fun fetchExportFormats(): List<String>
-  suspend fun exportAccount(format: String): app.interfold.app.api.AccountExportResult
+  suspend fun exportAccount(format: String): AccountExportResult
 
   fun deleteAccount()
   fun wipeAlters()
@@ -1812,12 +1817,7 @@ internal class ApiInterfaceImpl(
         params["recovery_code"] = globalSerializer.encodeToJsonElement(jwe)
       }
       try {
-        app.interfold.app.api.importAccount(
-          apiEndpoint,
-          token.value,
-          "sp",
-          buildRequestBody(params),
-        )
+        httpImportAccount(apiEndpoint, token.value, "sp", buildRequestBody(params))
       } catch (e: CancellationException) {
         throw e
       } catch (e: Exception) {
@@ -1829,7 +1829,7 @@ internal class ApiInterfaceImpl(
   override fun importPK(pkToken: String) {
     launchIO {
       try {
-        app.interfold.app.api.importAccount(
+        httpImportAccount(
           apiEndpoint,
           token.value,
           "pk",
@@ -1850,12 +1850,7 @@ internal class ApiInterfaceImpl(
   override fun importOctocon(backupJson: String) {
     launchIO {
       try {
-        app.interfold.app.api.importAccount(
-          apiEndpoint,
-          token.value,
-          "octocon",
-          backupJson,
-        )
+        httpImportAccount(apiEndpoint, token.value, "octocon", backupJson)
       } catch (e: CancellationException) {
         throw e
       } catch (e: Exception) {
@@ -1866,20 +1861,20 @@ internal class ApiInterfaceImpl(
 
   override suspend fun fetchImportFormats(): List<String> =
     try {
-      app.interfold.app.api.fetchImportFormats(apiEndpoint, token.value)
+      httpFetchImportFormats(apiEndpoint, token.value)
     } catch (_: Exception) {
       emptyList()
     }
 
   override suspend fun fetchExportFormats(): List<String> =
     try {
-      app.interfold.app.api.fetchExportFormats(apiEndpoint, token.value)
+      httpFetchExportFormats(apiEndpoint, token.value)
     } catch (_: Exception) {
       emptyList()
     }
 
-  override suspend fun exportAccount(format: String): app.interfold.app.api.AccountExportResult =
-    app.interfold.app.api.exportAccount(apiEndpoint, token.value, format)
+  override suspend fun exportAccount(format: String): AccountExportResult =
+    httpExportAccount(apiEndpoint, token.value, format)
 
   override fun deleteAccount() =
     sendAPIRequest(

@@ -3,16 +3,10 @@ package app.interfold.app.api
 import app.interfold.app.api.model.APIResponse
 import app.interfold.app.utils.AssumedUTCInstantSerializer
 import app.interfold.app.utils.globalSerializer
-import app.interfold.app.utils.ioDispatcher
-import io.ktor.client.call.body
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.isSuccess
 import kotlin.time.Instant
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.builtins.nullable
 import kotlinx.serialization.builtins.serializer
 
 @Serializable
@@ -83,65 +77,3 @@ fun settingsLoginProviderVisibility(methods: LoginMethods): SettingsLoginProvide
     showApple = methods.apple,
   )
 }
-
-suspend fun fetchImportFormats(endpoint: String, token: String): List<String> =
-  withContext(ioDispatcher) {
-    val response = get(endpoint, token, "settings/import/formats")
-    if (!response.status.isSuccess()) {
-      error("import formats HTTP ${response.status.value}")
-    }
-    parseFormatsListBody(response.bodyAsText())
-  }
-
-suspend fun fetchExportFormats(endpoint: String, token: String): List<String> =
-  withContext(ioDispatcher) {
-    val response = get(endpoint, token, "settings/export/formats")
-    if (!response.status.isSuccess()) {
-      error("export formats HTTP ${response.status.value}")
-    }
-    parseFormatsListBody(response.bodyAsText())
-  }
-
-suspend fun exportAccount(endpoint: String, token: String, format: String): AccountExportResult =
-  withContext(ioDispatcher) {
-    val response = get(endpoint, token, "settings/export?format=$format")
-    if (!response.status.isSuccess()) {
-      val raw = runCatching { response.bodyAsText() }.getOrNull()
-      val apiError = raw?.let {
-        runCatching {
-          globalSerializer.decodeFromString(
-            APIResponse.serializer(String.serializer().nullable),
-            it,
-          )
-        }.getOrNull()?.error
-      }
-      error(apiError ?: "export HTTP ${response.status.value}")
-    }
-    AccountExportResult(
-      bytes = response.body(),
-      fileName = exportFileNameForFormat(format),
-    )
-  }
-
-suspend fun importAccount(
-  endpoint: String,
-  token: String,
-  format: String,
-  bodyJson: String,
-): ImportOperationResponse =
-  withContext(ioDispatcher) {
-    val response = post(endpoint, token, "settings/import?format=$format", bodyJson)
-    if (response.status.value !in 200..299) {
-      val raw = runCatching { response.bodyAsText() }.getOrNull()
-      val apiError = raw?.let {
-        runCatching {
-          globalSerializer.decodeFromString(
-            APIResponse.serializer(String.serializer().nullable),
-            it,
-          )
-        }.getOrNull()?.error
-      }
-      error(apiError ?: "import HTTP ${response.status.value}")
-    }
-    parseImportOperationBody(response.bodyAsText())
-  }
