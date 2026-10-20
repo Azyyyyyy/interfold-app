@@ -33,6 +33,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -41,7 +42,10 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import app.interfold.app.api.ChannelMessage
+import app.interfold.app.api.LoginMethods
+import app.interfold.app.api.fetchLoginMethods
 import app.interfold.app.api.model.MySystem
+import app.interfold.app.api.settingsLoginProviderVisibility
 import app.interfold.app.ui.compose.LocalNavigationType
 import app.interfold.app.ui.compose.LocalSetShowPushNotifications
 import app.interfold.app.ui.compose.NavigationType
@@ -72,12 +76,18 @@ import app.interfold.app.utils.compose
 import app.interfold.app.utils.derive
 import app.interfold.app.utils.pendingWebAppVersion
 import app.interfold.app.utils.reloadWebApp
+import app.interfold.app.utils.saveExportedBytes
 import app.interfold.app.utils.savedState
 import app.interfold.app.utils.state
 import androidx.compose.foundation.layout.Row
 import com.arkivanov.decompose.ExperimentalDecomposeApi
 import com.mikepenz.markdown.compose.LocalMarkdownColors
 import com.mikepenz.markdown.m3.markdownColor
+import io.github.vinceglb.filekit.dialogs.FileKitMode
+import io.github.vinceglb.filekit.dialogs.FileKitType
+import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import io.github.vinceglb.filekit.name
+import io.github.vinceglb.filekit.readBytes
 import interfoldapp.shared.resources.Res
 import interfoldapp.shared.resources.accessibility
 import interfoldapp.shared.resources.account_options
@@ -95,13 +105,27 @@ import interfoldapp.shared.resources.discord_account
 import interfoldapp.shared.resources.encryption_not_initialized_card_button
 import interfoldapp.shared.resources.encryption_not_initialized_sp_note
 import interfoldapp.shared.resources.encryption_recovery_needed_card_button
+import interfoldapp.shared.resources.export
+import interfoldapp.shared.resources.export_complete_body
+import interfoldapp.shared.resources.export_data
+import interfoldapp.shared.resources.export_failed_body
+import interfoldapp.shared.resources.export_in_progress
+import interfoldapp.shared.resources.export_octocon_body
+import interfoldapp.shared.resources.export_octocon_title
+import interfoldapp.shared.resources.export_pk_body
+import interfoldapp.shared.resources.export_pk_title
 import interfoldapp.shared.resources.google_account
 import interfoldapp.shared.resources.import
 import interfoldapp.shared.resources.import_alters
+import interfoldapp.shared.resources.import_complete_octocon_body
 import interfoldapp.shared.resources.import_complete_pk_body
 import interfoldapp.shared.resources.import_complete_sp_body
+import interfoldapp.shared.resources.import_failed_octocon_body
 import interfoldapp.shared.resources.import_failed_pk_body
 import interfoldapp.shared.resources.import_failed_sp_body
+import interfoldapp.shared.resources.import_octocon_body
+import interfoldapp.shared.resources.import_octocon_choose_file
+import interfoldapp.shared.resources.import_octocon_title
 import interfoldapp.shared.resources.import_pk_body
 import interfoldapp.shared.resources.import_pk_title
 import interfoldapp.shared.resources.import_sp_body
@@ -118,6 +142,7 @@ import interfoldapp.shared.resources.login_methods
 import interfoldapp.shared.resources.logout
 import interfoldapp.shared.resources.logout_body
 import interfoldapp.shared.resources.notifications
+import interfoldapp.shared.resources.octocon_backup
 import interfoldapp.shared.resources.ok
 import interfoldapp.shared.resources.activity
 import interfoldapp.shared.resources.open_source_licenses
@@ -144,7 +169,13 @@ import interfoldapp.shared.resources.tooltip_google_account_desc
 import interfoldapp.shared.resources.tooltip_logout_desc
 import interfoldapp.shared.resources.tooltip_notifications_desc
 import interfoldapp.shared.resources.tooltip_activity_desc
+import interfoldapp.shared.resources.tooltip_octocon_export_desc
+import interfoldapp.shared.resources.tooltip_octocon_export_title
+import interfoldapp.shared.resources.tooltip_octocon_import_desc
+import interfoldapp.shared.resources.tooltip_octocon_import_title
 import interfoldapp.shared.resources.tooltip_open_source_licenses_desc
+import interfoldapp.shared.resources.tooltip_pk_export_desc
+import interfoldapp.shared.resources.tooltip_pk_export_title
 import interfoldapp.shared.resources.tooltip_plural_kit_import_desc
 import interfoldapp.shared.resources.tooltip_plural_kit_import_title
 import interfoldapp.shared.resources.tooltip_reset_device_settings_desc
@@ -169,6 +200,7 @@ import interfoldapp.shared.resources.web_app_update_settings_desc
 import interfoldapp.shared.resources.web_app_update_settings_title
 import interfoldapp.shared.resources.wipe_alters
 import interfoldapp.shared.resources.wipe_alters_body
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalDecomposeApi::class)
 @Composable
@@ -179,6 +211,7 @@ fun SettingsRootScreen(
   val notifications = Res.string.notifications.compose
   val login_methods = Res.string.login_methods.compose
   val import_alters = Res.string.import_alters.compose
+  val export_data = Res.string.export_data.compose
   val danger_zone = Res.string.danger_zone.compose
   val app_info = Res.string.app_info.compose
   val app = Res.string.app.compose
@@ -193,6 +226,19 @@ fun SettingsRootScreen(
 
   val isSinglet = settingsData.isSinglet
   val pendingUpdateVersion by pendingWebAppVersion.collectAsState(null)
+
+  var loginMethods by state<LoginMethods?>(null)
+  var importFormats by state(emptyList<String>())
+  var exportFormats by state(emptyList<String>())
+
+  LaunchedEffect(settingsData.apiEndpoint, system.isSuccess) {
+    if (!system.isSuccess) return@LaunchedEffect
+    loginMethods = runCatching { fetchLoginMethods(settingsData.apiEndpoint).first }.getOrNull()
+    importFormats = api.fetchImportFormats()
+    exportFormats = api.fetchExportFormats()
+  }
+
+  val loginVisibility = loginMethods?.let { settingsLoginProviderVisibility(it) }
 
   val setShowPushNotifications = LocalSetShowPushNotifications.current
 
@@ -281,37 +327,42 @@ fun SettingsRootScreen(
           }
 
           if(system.isSuccess) {
-            SettingsSection(
-              login_methods,
-              settingsData,
-              {
-                SettingsGoogleAccount(
-                  it,
-                  system.ensureData,
-                  tryLinkGoogle = api::tryLinkGoogle,
-                  tryUnlinkEmail = api::tryUnlinkEmail,
-                  openURL = platformUtilities::openURL
-                )
-              },
-              {
-                SettingsAppleAccount(
-                  it,
-                  system.ensureData,
-                  tryLinkApple = api::tryLinkApple,
-                  tryUnlinkApple = api::tryUnlinkApple,
-                  openURL = platformUtilities::openURL
-                )
-              },
-              {
-                SettingsDiscordAccount(
-                  it,
-                  system.ensureData,
-                  tryLinkDiscord = api::tryLinkDiscord,
-                  tryUnlinkDiscord = api::tryUnlinkDiscord,
-                  openURL = platformUtilities::openURL
-                )
-              },
-              {
+            val loginItems = buildList<@Composable (CardGroupPosition) -> Unit> {
+              val visibility = loginVisibility
+              if (visibility == null || visibility.showGoogle) {
+                add {
+                  SettingsGoogleAccount(
+                    it,
+                    system.ensureData,
+                    tryLinkGoogle = api::tryLinkGoogle,
+                    tryUnlinkEmail = api::tryUnlinkEmail,
+                    openURL = platformUtilities::openURL
+                  )
+                }
+              }
+              if (visibility == null || visibility.showApple) {
+                add {
+                  SettingsAppleAccount(
+                    it,
+                    system.ensureData,
+                    tryLinkApple = api::tryLinkApple,
+                    tryUnlinkApple = api::tryUnlinkApple,
+                    openURL = platformUtilities::openURL
+                  )
+                }
+              }
+              if (visibility == null || visibility.showDiscord) {
+                add {
+                  SettingsDiscordAccount(
+                    it,
+                    system.ensureData,
+                    tryLinkDiscord = api::tryLinkDiscord,
+                    tryUnlinkDiscord = api::tryUnlinkDiscord,
+                    openURL = platformUtilities::openURL
+                  )
+                }
+              }
+              add {
                 SettingsLogOut(
                   it,
                   logOut = {
@@ -319,16 +370,73 @@ fun SettingsRootScreen(
                   }
                 )
               }
+            }
+            SettingsSection(
+              login_methods,
+              settingsData,
+              *loginItems.toTypedArray()
             )
           }
 
-            if(!isSinglet) {
-              SettingsSection(
-                import_alters,
-                settingsData,
-                { SettingsImportSP(it, api::importSP, api, settings) },
-                { SettingsImportPK(it, api::importPK, api) }
-              )
+            if(!isSinglet && importFormats.isNotEmpty()) {
+              val importItems = buildList<@Composable (CardGroupPosition) -> Unit> {
+                if ("sp" in importFormats) {
+                  add { SettingsImportSP(it, api::importSP, api, settings) }
+                }
+                if ("pk" in importFormats) {
+                  add { SettingsImportPK(it, api::importPK, api) }
+                }
+                if ("octocon" in importFormats) {
+                  add { SettingsImportOctocon(it, api::importOctocon, api) }
+                }
+              }
+              if (importItems.isNotEmpty()) {
+                SettingsSection(
+                  import_alters,
+                  settingsData,
+                  *importItems.toTypedArray()
+                )
+              }
+            }
+
+            if(!isSinglet && exportFormats.isNotEmpty()) {
+              val exportItems = buildList<@Composable (CardGroupPosition) -> Unit> {
+                if ("octocon" in exportFormats) {
+                  add {
+                    SettingsExportFormat(
+                      cardGroupPosition = it,
+                      api = api,
+                      format = "octocon",
+                      label = Res.string.octocon_backup.compose,
+                      title = Res.string.export_octocon_title.compose,
+                      body = Res.string.export_octocon_body.compose,
+                      spotlightTitle = Res.string.tooltip_octocon_export_title.compose,
+                      spotlightDescription = Res.string.tooltip_octocon_export_desc.compose,
+                    )
+                  }
+                }
+                if ("pk" in exportFormats) {
+                  add {
+                    SettingsExportFormat(
+                      cardGroupPosition = it,
+                      api = api,
+                      format = "pk",
+                      label = Res.string.pluralkit.compose,
+                      title = Res.string.export_pk_title.compose,
+                      body = Res.string.export_pk_body.compose,
+                      spotlightTitle = Res.string.tooltip_pk_export_title.compose,
+                      spotlightDescription = Res.string.tooltip_pk_export_desc.compose,
+                    )
+                  }
+                }
+              }
+              if (exportItems.isNotEmpty()) {
+                SettingsSection(
+                  export_data,
+                  settingsData,
+                  *exportItems.toTypedArray()
+                )
+              }
             }
 
           SettingsSection(
@@ -702,6 +810,14 @@ private fun SettingsImportPK(
     }
   }
 
+  LaunchedEffect(Unit) {
+    apiInterface.errorFlow.collect {
+      if (status is ImportStatus.Importing) {
+        status = ImportStatus.Failed
+      }
+    }
+  }
+
   val (Dialog, isOpen, openDialog) = createConfirmationDialog(
     title = Res.string.import_pk_title.compose,
     messageContent = {
@@ -1050,6 +1166,241 @@ private fun SettingsImportSP(
 }
 
 @Composable
+private fun SettingsImportOctocon(
+  cardGroupPosition: CardGroupPosition,
+  importOctocon: (String) -> Unit,
+  apiInterface: ApiInterface,
+) {
+  var status by state<ImportStatus>(ImportStatus.Idle)
+  var selectedFileName by state<String?>(null)
+  val scope = rememberCoroutineScope()
+
+  LaunchedEffect(Unit) {
+    apiInterface.eventFlow.collect {
+      when (it) {
+        is ChannelMessage.OctoconImportComplete -> status = ImportStatus.Success(it.alterCount)
+        is ChannelMessage.OctoconImportFailed -> status = ImportStatus.Failed
+        else -> Unit
+      }
+    }
+  }
+
+  LaunchedEffect(Unit) {
+    apiInterface.errorFlow.collect {
+      if (status is ImportStatus.Importing) {
+        status = ImportStatus.Failed
+      }
+    }
+  }
+
+  val filePickerLauncher = rememberFilePickerLauncher(
+    type = FileKitType.File(extensions = listOf("json")),
+    mode = FileKitMode.Single,
+  ) { file ->
+    if (file == null) return@rememberFilePickerLauncher
+    scope.launch {
+      try {
+        val text = file.readBytes().decodeToString()
+        selectedFileName = file.name
+        status = ImportStatus.Importing
+        importOctocon(text)
+      } catch (_: Exception) {
+        status = ImportStatus.Failed
+      }
+    }
+  }
+
+  val (Dialog, isOpen, openDialog) = createConfirmationDialog(
+    title = Res.string.import_octocon_title.compose,
+    messageContent = {
+      LazyColumn(
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        when (status) {
+          is ImportStatus.Success -> item {
+            MarkdownRenderer(Res.string.import_complete_octocon_body.compose)
+          }
+
+          is ImportStatus.Failed -> item {
+            MarkdownRenderer(Res.string.import_failed_octocon_body.compose)
+          }
+
+          is ImportStatus.Idle -> item {
+            MarkdownRenderer(Res.string.import_octocon_body.compose)
+          }
+
+          is ImportStatus.Importing -> item {
+            MarkdownRenderer(Res.string.importing_data_body.compose)
+          }
+        }
+        if (status is ImportStatus.Idle || status is ImportStatus.Failed) {
+          item {
+            selectedFileName?.let {
+              Text(it, style = MaterialTheme.typography.bodySmall)
+            }
+            Button(
+              onClick = { filePickerLauncher.launch() },
+              enabled = status == ImportStatus.Idle || status is ImportStatus.Failed
+            ) {
+              Text(Res.string.import_octocon_choose_file.compose)
+            }
+          }
+        }
+      }
+    },
+    confirmText = Res.string.import.compose,
+    cancelText = if (status is ImportStatus.Success) Res.string.confirm.compose else Res.string.cancel.compose,
+    icon = {
+      when (status) {
+        ImportStatus.Idle -> Icon(
+          imageVector = Icons.Rounded.FileDownload,
+          contentDescription = null
+        )
+
+        ImportStatus.Importing -> CircularProgressIndicator()
+
+        ImportStatus.Failed -> Icon(
+          imageVector = Icons.Rounded.Error,
+          contentDescription = null,
+          tint = MaterialTheme.colorScheme.error
+        )
+
+        is ImportStatus.Success -> Icon(
+          imageVector = Icons.Rounded.Check,
+          contentDescription = null,
+          tint = MaterialTheme.colorScheme.primary
+        )
+      }
+    },
+    onConfirm = null,
+    closeOnConfirm = false,
+    forceOpen = status == ImportStatus.Importing
+  )
+
+  if (isOpen) {
+    Dialog()
+  }
+
+  SettingsButtonItem(
+    text = Res.string.octocon_backup.compose,
+    buttonText = Res.string.import.compose,
+    spotlightTitle = Res.string.tooltip_octocon_import_title.compose,
+    spotlightDescription = Res.string.tooltip_octocon_import_desc.compose,
+    cardGroupPosition = cardGroupPosition,
+    onClick = {
+      status = ImportStatus.Idle
+      selectedFileName = null
+      openDialog()
+    }
+  )
+}
+
+private sealed class ExportStatus {
+  data object Idle : ExportStatus()
+  data object Exporting : ExportStatus()
+  data object Success : ExportStatus()
+  data object Failed : ExportStatus()
+}
+
+@Composable
+private fun SettingsExportFormat(
+  cardGroupPosition: CardGroupPosition,
+  api: ApiInterface,
+  format: String,
+  label: String,
+  title: String,
+  body: String,
+  spotlightTitle: String,
+  spotlightDescription: String,
+) {
+  var status by state<ExportStatus>(ExportStatus.Idle)
+  val scope = rememberCoroutineScope()
+
+  val (Dialog, isOpen, openDialog) = createConfirmationDialog(
+    title = title,
+    messageContent = {
+      LazyColumn(
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        when (status) {
+          ExportStatus.Success -> item {
+            MarkdownRenderer(Res.string.export_complete_body.compose)
+          }
+
+          ExportStatus.Failed -> item {
+            MarkdownRenderer(Res.string.export_failed_body.compose)
+          }
+
+          ExportStatus.Idle -> item {
+            MarkdownRenderer(body)
+          }
+
+          ExportStatus.Exporting -> item {
+            MarkdownRenderer(Res.string.export_in_progress.compose)
+          }
+        }
+      }
+    },
+    confirmText = Res.string.export.compose,
+    cancelText = if (status is ExportStatus.Success) Res.string.confirm.compose else Res.string.cancel.compose,
+    icon = {
+      when (status) {
+        ExportStatus.Idle -> Icon(
+          imageVector = Icons.Rounded.FileDownload,
+          contentDescription = null
+        )
+
+        ExportStatus.Exporting -> CircularProgressIndicator()
+
+        ExportStatus.Failed -> Icon(
+          imageVector = Icons.Rounded.Error,
+          contentDescription = null,
+          tint = MaterialTheme.colorScheme.error
+        )
+
+        ExportStatus.Success -> Icon(
+          imageVector = Icons.Rounded.Check,
+          contentDescription = null,
+          tint = MaterialTheme.colorScheme.primary
+        )
+      }
+    },
+    onConfirm = if (status is ExportStatus.Success || status is ExportStatus.Exporting) null else {
+      {
+        status = ExportStatus.Exporting
+        scope.launch {
+          try {
+            val result = api.exportAccount(format)
+            val saved = saveExportedBytes(result.fileName, result.bytes)
+            status = if (saved) ExportStatus.Success else ExportStatus.Idle
+          } catch (_: Exception) {
+            status = ExportStatus.Failed
+          }
+        }
+      }
+    },
+    closeOnConfirm = false,
+    forceOpen = status == ExportStatus.Exporting
+  )
+
+  if (isOpen) {
+    Dialog()
+  }
+
+  SettingsButtonItem(
+    text = label,
+    buttonText = Res.string.export.compose,
+    spotlightTitle = spotlightTitle,
+    spotlightDescription = spotlightDescription,
+    cardGroupPosition = cardGroupPosition,
+    onClick = {
+      status = ExportStatus.Idle
+      openDialog()
+    }
+  )
+}
+
+@Composable
 private fun SettingsResetSettings(cardGroupPosition: CardGroupPosition, nukeEverything: (fully: Boolean) -> Unit) {
   val (Dialog, isOpen, openDialog) = createConfirmationDialog(
     title = Res.string.reset_device_settings.compose,
@@ -1266,5 +1617,6 @@ private fun SettingsServerStatus(cardGroupPosition: CardGroupPosition, openURL: 
     spotlightDescription = Res.string.tooltip_server_status_desc.compose,
     cardGroupPosition = cardGroupPosition,
     url = "https://status.interfold.co.uk",
-    openURL = openURL
+    openURL = openURL,
+    enabled = false
   )

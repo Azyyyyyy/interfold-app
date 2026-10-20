@@ -14,6 +14,7 @@ kotlin {
 
   targets.named<com.android.build.api.dsl.KotlinMultiplatformAndroidLibraryTarget>("android") {
     compileSdk = (findProperty("android.compileSdk") as String).toInt()
+    minSdk = (findProperty("android.minSdk") as String).toInt()
     namespace = "app.interfold.kotlix"
   }
 

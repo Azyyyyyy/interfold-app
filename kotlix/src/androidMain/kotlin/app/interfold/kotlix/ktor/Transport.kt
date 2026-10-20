@@ -7,17 +7,12 @@ import io.ktor.client.plugins.websocket.WebSockets
 
 actual fun buildWebsocketHttpClient(): HttpClient {
   return HttpClient(OkHttp) {
-    /*install(Logging) {
-      logger = object : Logger {
-        override fun log(message: String) {
-          Napier.v("HTTP", null, message)
-        }
-      }
-      level = LogLevel.ALL
-    }*/
+    engine {
+      installAndroidLocalNetworkGate()
+    }
     install(WebSockets)
     install(ContentNegotiation)
-  }//.also { Napier.base(DebugAntilog()) }
+  }
 }
 
 /*

@@ -12,7 +12,6 @@ import app.interfold.app.ui.registerStateHandler
 import app.interfold.app.ui.retainStateHandler
 import app.interfold.app.utils.ColorSchemeParams
 import app.interfold.app.utils.DevicePlatform
-import app.interfold.app.utils.ExitApplicationType
 import app.interfold.app.utils.WebURLOpenBehavior
 import app.interfold.app.utils.buildRedirectUri
 import app.interfold.app.utils.ioDispatcher
@@ -47,26 +46,18 @@ interface LoginComponent {
   fun logInWithApple(colorSchemeParams: ColorSchemeParams)
   fun logInWithCloudflare(colorSchemeParams: ColorSchemeParams)
 
-  fun incrementDirectTokenLoginTimesPressed()
-  fun closeDirectTokenDialog()
-  fun logInWithDirectToken(token: String)
-
   fun updateServerUrl(url: String)
   fun checkServerHealth()
   fun fetchLoginMethods()
 
   @Serializable
   data class Model(
-    val directTokenTimesPressed: Int = 0,
-    val directTokenDialogOpen: Boolean = false,
     val serverUrl: String = "",
     val serverHealthStatus: ServerHealthStatus = ServerHealthStatus.UNKNOWN,
     val loginMethods: LoginMethods = LoginMethods(),
     val loginMethodsStatus: LoginMethodsStatus = LoginMethodsStatus.Idle,
   )
 }
-
-private const val DIRECT_TOKEN_PRESSES_REQUIRED = 5
 
 internal data class HealthCheckResult(val readyUp: Boolean, val liveUp: Boolean)
 
@@ -96,7 +87,9 @@ internal class LoginComponentImpl(
 
   init {
     registerStateHandler(handler)
-    fetchLoginMethods()
+    // Startup already requested local-network access for a saved LAN endpoint.
+    // Prompting again here would show a second dialog after a denial.
+    loadLoginMethods()
   }
 
   override fun logInWithGoogle(colorSchemeParams: ColorSchemeParams) = logInWithProvider("google", colorSchemeParams)
@@ -154,6 +147,10 @@ internal class LoginComponentImpl(
 
     healthCheckJob = scope.launch {
       try {
+        if (!platformUtilities.prepareLocalNetworkAccess(baseUrl)) {
+          markServerUnreachable()
+          return@launch
+        }
         val result = withContext(ioDispatcher) {
           withTimeout(LOGIN_METHODS_TIMEOUT_MS) { performHealthCheck(baseUrl) }
         }
@@ -165,7 +162,7 @@ internal class LoginComponentImpl(
         }
         if (status == ServerHealthStatus.HEALTHY || status == ServerHealthStatus.DEGRADED) {
           model.tryEmit(model.value.copy(serverHealthStatus = status))
-          fetchLoginMethods()
+          loadLoginMethods()
         } else {
           markServerUnreachable()
         }
@@ -181,7 +178,11 @@ internal class LoginComponentImpl(
     }
   }
 
-  override fun fetchLoginMethods() {
+  override fun fetchLoginMethods() = beginLoginMethods(promptForLocalNetwork = true)
+
+  private fun loadLoginMethods() = beginLoginMethods(promptForLocalNetwork = false)
+
+  private fun beginLoginMethods(promptForLocalNetwork: Boolean) {
     loginMethodsJob?.cancel()
     val baseUrl = model.value.serverUrl.trimEnd('/')
     if (baseUrl.isBlank()) {
@@ -197,6 +198,15 @@ internal class LoginComponentImpl(
     model.tryEmit(model.value.copy(loginMethodsStatus = LoginMethodsStatus.Loading))
     loginMethodsJob = scope.launch {
       try {
+        if (promptForLocalNetwork && !platformUtilities.prepareLocalNetworkAccess(baseUrl)) {
+          model.tryEmit(
+            model.value.copy(
+              loginMethods = LoginMethods(),
+              loginMethodsStatus = LoginMethodsStatus.Failed,
+            )
+          )
+          return@launch
+        }
         val (methods, _) = fetchLoginMethods(baseUrl)
         model.tryEmit(
           model.value.copy(
@@ -226,36 +236,6 @@ internal class LoginComponentImpl(
         loginMethodsStatus = LoginMethodsStatus.Failed,
       )
     )
-  }
-
-  override fun incrementDirectTokenLoginTimesPressed() {
-    if (model.value.directTokenTimesPressed >= DIRECT_TOKEN_PRESSES_REQUIRED - 1) {
-      model.tryEmit(
-        model.value.copy(
-          directTokenTimesPressed = 0,
-          directTokenDialogOpen = true
-        )
-      )
-    } else {
-      model.tryEmit(
-        model.value.copy(
-          directTokenTimesPressed = model.value.directTokenTimesPressed + 1,
-        )
-      )
-    }
-  }
-
-  override fun closeDirectTokenDialog() {
-    model.tryEmit(
-      model.value.copy(
-        directTokenDialogOpen = false
-      )
-    )
-  }
-
-  override fun logInWithDirectToken(token: String) {
-    settings.setToken(token = token)
-    platformUtilities.exitApplication(ExitApplicationType.ForcedRestart)
   }
 }
 

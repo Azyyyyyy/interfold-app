@@ -68,7 +68,16 @@ internal suspend fun assertCreateAlterEmitsEventOverBackend(baseUrl: String) {
       "Expected AlterCreated event for '$name', got '${createdEvent.alter.name}'",
     )
 
-    val alters = (h.api.alters.value as APIState.Success).data
+    // handleChannelMessage is another eventFlow collector; don't read StateFlow
+    // until it has applied the event.
+    val altersState = withContext(app.interfold.app.utils.ioDispatcher) {
+      withTimeout(15.seconds) {
+        h.api.alters.first { state ->
+          state is APIState.Success && state.data.any { it.name == name }
+        }
+      }
+    }
+    val alters = (altersState as APIState.Success).data
     assertTrue(
       alters.any { it.name == name },
       "Expected alter '$name' to appear in alters StateFlow, got ${alters.map { it.name }}",

@@ -15,6 +15,7 @@ kotlin {
   targets.named<com.android.build.api.dsl.KotlinMultiplatformAndroidLibraryTarget>("android") {
     namespace = "com.mikepenz.markdown.m3"
     compileSdk = (findProperty("android.compileSdk") as String).toInt()
+    minSdk = (findProperty("android.minSdk") as String).toInt()
   }
 
   iosArm64()

@@ -2,9 +2,8 @@ package app.interfold.app.ui.compose.screens
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -24,7 +23,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -41,17 +39,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -67,13 +60,9 @@ import app.interfold.app.utils.state
 import interfoldapp.shared.resources.Res
 import interfoldapp.shared.resources.app_logo
 import interfoldapp.shared.resources.apple_logo
-import interfoldapp.shared.resources.cancel
 import interfoldapp.shared.resources.cloudflare_logo
-import interfoldapp.shared.resources.direct_token_login_body
-import interfoldapp.shared.resources.direct_token_login_title
 import interfoldapp.shared.resources.discord_logo
 import interfoldapp.shared.resources.google_logo
-import interfoldapp.shared.resources.login
 import interfoldapp.shared.resources.login_apple
 import interfoldapp.shared.resources.login_cloudflare
 import interfoldapp.shared.resources.login_discord
@@ -83,7 +72,6 @@ import interfoldapp.shared.resources.login_methods_none
 import interfoldapp.shared.resources.login_methods_retry
 import interfoldapp.shared.resources.login_methods_unavailable
 import interfoldapp.shared.resources.or_lowercase
-import interfoldapp.shared.resources.token
 import interfoldapp.shared.resources.welcome_body
 import interfoldapp.shared.resources.welcome_title
 import org.jetbrains.compose.resources.painterResource
@@ -93,7 +81,6 @@ fun LoginScreen(
   component: LoginComponent
 ) {
   val model by component.model.collectAsState()
-  val directTokenDialogOpen = model.directTokenDialogOpen
   val serverUrl = model.serverUrl
   val serverHealthStatus = model.serverHealthStatus
   val loginMethods = model.loginMethods
@@ -175,11 +162,7 @@ fun LoginScreen(
             Image(
               painter = interfoldLogoVectorPainter(animate = !reduceMotion),
               contentDescription = Res.string.app_logo.compose,
-              modifier = Modifier.size(128.dp).clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = component::incrementDirectTokenLoginTimesPressed
-              )
+              modifier = Modifier.size(128.dp)
             )
             Spacer(modifier = Modifier.height(24.dp))
             Card(
@@ -205,13 +188,6 @@ fun LoginScreen(
             }
           }
         }
-      }
-
-      if (directTokenDialogOpen) {
-        DirectTokenLoginDialog(
-          onDismissRequest = component::closeDirectTokenDialog,
-          logInWithToken = component::logInWithDirectToken
-        )
       }
     }
   )
@@ -297,7 +273,9 @@ private fun CloudflareLoginButton(logIn: (ColorSchemeParams) -> Unit) {
     Icon(
       painterResource(Res.drawable.cloudflare_logo),
       contentDescription = null,
-      modifier = Modifier.size(ButtonDefaults.IconSize),
+      modifier = Modifier
+        .height(ButtonDefaults.IconSize)
+        .aspectRatio(460f / 271.2f),
       tint = Color.Unspecified,
     )
     Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
@@ -334,7 +312,10 @@ private fun ServerUrlTopBar(
       healthStatus = healthStatus,
       onUrlChange = onUrlChange,
       onCheckHealth = onCheckHealth,
-      onDismiss = { dialogOpen = false }
+      onDismiss = {
+        dialogOpen = false
+        onCheckHealth()
+      }
     )
   }
 }
@@ -380,10 +361,7 @@ private fun ServerUrlDialog(
       }
     },
     confirmButton = {
-      Button(onClick = {
-        onCheckHealth()
-        onDismiss()
-      }) {
+      Button(onClick = onDismiss) {
         Text("Done")
       }
     }
@@ -459,54 +437,4 @@ private fun DiscordLoginButton(logIn: (ColorSchemeParams) -> Unit) {
     Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
     Text(Res.string.login_discord.compose)
   }
-}
-
-@Composable
-private fun DirectTokenLoginDialog(
-  onDismissRequest: () -> Unit,
-  logInWithToken: (String) -> Unit
-) {
-  val focusRequester = remember { FocusRequester() }
-
-  var token by state("")
-
-  AlertDialog(
-    onDismissRequest = onDismissRequest,
-    title = { Text(Res.string.direct_token_login_title.compose) },
-    text = {
-      LazyColumn(
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-      ) {
-        item {
-          Text(Res.string.direct_token_login_body.compose)
-        }
-        item {
-          TextField(
-            value = token,
-            onValueChange = {
-              if (it.length > 1_000) return@TextField
-              token = it
-            },
-            label = { Text(Res.string.token.compose) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
-          )
-
-          LaunchedEffect(focusRequester) {
-            focusRequester.requestFocus()
-          }
-        }
-      }
-    },
-    confirmButton = {
-      Button(onClick = { logInWithToken(token) }) {
-        Text(Res.string.login.compose)
-      }
-    },
-    dismissButton = {
-      Button(onClick = onDismissRequest) {
-        Text(Res.string.cancel.compose)
-      }
-    }
-  )
 }

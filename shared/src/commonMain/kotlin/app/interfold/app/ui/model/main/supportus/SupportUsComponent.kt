@@ -7,25 +7,19 @@ import app.interfold.app.utils.ColorSchemeParams
 interface SupportUsComponent {
   val settings: SettingsInterface
 
-  fun openPatreon(colorSchemeParams: ColorSchemeParams)
-  fun openKofi(colorSchemeParams: ColorSchemeParams)
+  fun openGitHubSponsors(colorSchemeParams: ColorSchemeParams)
 
   fun navigateBack()
 }
 
-const val PATREON_URL = "https://www.patreon.com/interfold"
-const val KOFI_URL = "https://ko-fi.com/atlasoc"
+const val GITHUB_SPONSORS_URL = "https://github.com/sponsors/Azyyyyyy"
 
 class SupportUsComponentImpl(
   componentContext: MainComponentContext,
   private val popSelf: () -> Unit
 ) : SupportUsComponent, MainComponentContext by componentContext {
-  override fun openPatreon(colorSchemeParams: ColorSchemeParams) {
-    platformUtilities.openURL(PATREON_URL, colorSchemeParams)
-  }
-
-  override fun openKofi(colorSchemeParams: ColorSchemeParams) {
-    platformUtilities.openURL(KOFI_URL, colorSchemeParams)
+  override fun openGitHubSponsors(colorSchemeParams: ColorSchemeParams) {
+    platformUtilities.openURL(GITHUB_SPONSORS_URL, colorSchemeParams)
   }
 
   override fun navigateBack() = popSelf()

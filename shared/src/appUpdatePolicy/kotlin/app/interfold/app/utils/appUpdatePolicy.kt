@@ -95,6 +95,22 @@ object AppUpdatePolicy {
     return currentCacheName
   }
 
+  /**
+   * Cloudflare Access rotates `CF_Authorization` with a redirect.
+   *
+   * Navigation requests use redirect mode `manual`, so that redirect arrives
+   * as an `opaqueredirect`. Replaying it lets the browser finish the refresh.
+   * The same response for any other request is a network error, which Chrome
+   * reports as 502.
+   *
+   * Navigations also have to be passed to `fetch()` with no init dictionary.
+   * An init dictionary drops mode `navigate`, and Access answers that
+   * non-navigation refresh with 502 instead of a redirect.
+   */
+  fun replayAccessRedirect(isNavigation: Boolean, responseType: String?): Boolean {
+    return isNavigation && responseType == "opaqueredirect"
+  }
+
   /** Browser must fetch these; a SW [fetch] is unauthenticated to Access. */
   fun isBrowserCredentialedPath(pathname: String): Boolean {
     return pathname == "/service-worker.js" ||

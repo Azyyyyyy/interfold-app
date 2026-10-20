@@ -1,6 +1,8 @@
 package app.interfold.app.ui.model.interfaces
 
 import app.interfold.app.api.APIState
+import app.interfold.app.api.AccountExportResult
+import app.interfold.app.api.isCompletedHttpWrite
 import app.interfold.app.api.looksLikeCloudflareAccessChallenge
 import app.interfold.app.api.ChannelMessage
 import app.interfold.app.api.FriendRequests
@@ -12,6 +14,10 @@ import app.interfold.app.api.PhoenixSocketSessionFactory
 import app.interfold.app.api.SocketAdapterResponse
 import app.interfold.app.api.buildEndpointPayload
 import app.interfold.app.api.clusterFrontData
+import app.interfold.app.api.exportAccount as httpExportAccount
+import app.interfold.app.api.fetchExportFormats as httpFetchExportFormats
+import app.interfold.app.api.fetchImportFormats as httpFetchImportFormats
+import app.interfold.app.api.importAccount as httpImportAccount
 import app.interfold.app.api.model.APIError
 import app.interfold.app.api.model.APIResponse
 import app.interfold.app.api.model.AlterJournalEntry
@@ -48,6 +54,7 @@ import app.interfold.app.utils.sortedLocaleAware
 import com.arkivanov.essenty.instancekeeper.InstanceKeeper
 import io.ktor.client.call.body
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpMethod.Companion.Delete
@@ -66,6 +73,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.Month
 import kotlinx.datetime.TimeZone
@@ -137,7 +145,7 @@ interface ApiInterface {
   fun deleteAlter(alterID: Int)
   fun loadAlter(alterID: Int)
   fun setAlterPinned(alterID: Int, pinned: Boolean)
-  fun setAlterAvatar(alterID: Int, bytes: ByteArray, fileName: String): Any
+  suspend fun setAlterAvatar(alterID: Int, bytes: ByteArray, fileName: String): Boolean
   fun removeAlterAvatar(alterID: Int)
 
   /* --------------- FRIENDS --------------- */
@@ -209,11 +217,15 @@ interface ApiInterface {
 
   fun updateUsername(username: String)
   fun updateDescription(description: String?)
-  fun setSystemAvatar(bytes: ByteArray, fileName: String)
+  suspend fun setSystemAvatar(bytes: ByteArray, fileName: String): Boolean
   fun removeSystemAvatar()
 
   fun importSP(spToken: String, recoveryCode: String? = null)
   fun importPK(pkToken: String)
+  fun importOctocon(backupJson: String)
+  suspend fun fetchImportFormats(): List<String>
+  suspend fun fetchExportFormats(): List<String>
+  suspend fun exportAccount(format: String): AccountExportResult
 
   fun deleteAccount()
   fun wipeAlters()
@@ -986,6 +998,12 @@ internal class ApiInterfaceImpl(
         reloadTags(true)
       }
 
+      is ChannelMessage.OctoconImportComplete -> {
+        reloadAlters(true)
+        reloadFronts(true)
+        reloadTags(true)
+      }
+
       is ChannelMessage.Error -> {
         // TODO: Snackbar?
         platformLog("Error: ${message.error}")
@@ -1261,9 +1279,9 @@ internal class ApiInterfaceImpl(
       )
     )
 
-  override fun setAlterAvatar(alterID: Int, bytes: ByteArray, fileName: String) =
-    launchIO {
-      app.interfold.app.api.setAlterAvatar(apiEndpoint, token.value, alterID, bytes, fileName).emitError()
+  override suspend fun setAlterAvatar(alterID: Int, bytes: ByteArray, fileName: String): Boolean =
+    runRawHttp {
+      app.interfold.app.api.setAlterAvatar(apiEndpoint, token.value, alterID, bytes, fileName)
     }
 
   override fun removeAlterAvatar(alterID: Int) =
@@ -1780,11 +1798,10 @@ internal class ApiInterfaceImpl(
     )
   }
 
-  override fun setSystemAvatar(bytes: ByteArray, fileName: String) {
-    launchIO {
-      app.interfold.app.api.setSystemAvatar(apiEndpoint, token.value, bytes, fileName).emitError()
+  override suspend fun setSystemAvatar(bytes: ByteArray, fileName: String): Boolean =
+    runRawHttp {
+      app.interfold.app.api.setSystemAvatar(apiEndpoint, token.value, bytes, fileName)
     }
-  }
 
   override fun removeSystemAvatar() =
     sendAPIRequest(
@@ -1802,25 +1819,65 @@ internal class ApiInterfaceImpl(
         val jwe = platformUtilities.recoveryCodeToJWE(formatted, settingsInterface.data.value)
         params["recovery_code"] = globalSerializer.encodeToJsonElement(jwe)
       }
-
-      sendAPIRequest(
-        Post,
-        "settings/import-sp",
-        buildRequestBody(params)
-      )
+      try {
+        httpImportAccount(apiEndpoint, token.value, "sp", buildRequestBody(params))
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        _errorFlow.emit(e.message ?: "Import failed")
+      }
     }
   }
 
-  override fun importPK(pkToken: String) =
-    sendAPIRequest(
-      Post,
-      "settings/import-pk",
-      buildRequestBody(
-        mapOf(
-          "token" to globalSerializer.encodeToJsonElement(pkToken)
+  override fun importPK(pkToken: String) {
+    launchIO {
+      try {
+        httpImportAccount(
+          apiEndpoint,
+          token.value,
+          "pk",
+          buildRequestBody(
+            mapOf(
+              "token" to globalSerializer.encodeToJsonElement(pkToken)
+            )
+          ),
         )
-      )
-    )
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        _errorFlow.emit(e.message ?: "Import failed")
+      }
+    }
+  }
+
+  override fun importOctocon(backupJson: String) {
+    launchIO {
+      try {
+        httpImportAccount(apiEndpoint, token.value, "octocon", backupJson)
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        _errorFlow.emit(e.message ?: "Import failed")
+      }
+    }
+  }
+
+  override suspend fun fetchImportFormats(): List<String> =
+    try {
+      httpFetchImportFormats(apiEndpoint, token.value)
+    } catch (_: Exception) {
+      emptyList()
+    }
+
+  override suspend fun fetchExportFormats(): List<String> =
+    try {
+      httpFetchExportFormats(apiEndpoint, token.value)
+    } catch (_: Exception) {
+      emptyList()
+    }
+
+  override suspend fun exportAccount(format: String): AccountExportResult =
+    httpExportAccount(apiEndpoint, token.value, format)
 
   override fun deleteAccount() =
     sendAPIRequest(
@@ -1897,15 +1954,34 @@ internal class ApiInterfaceImpl(
       block()
     }
 
-  private suspend inline fun HttpResponse.emitError(): HttpResponse {
-    if (looksLikeCloudflareAccessChallenge(status.value, headers[HttpHeaders.Location], null)) {
+  private suspend fun runRawHttp(block: suspend () -> HttpResponse): Boolean {
+    return try {
+      block().emitError()
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      _errorFlow.emit(e.message ?: "Request failed")
+      false
+    }
+  }
+
+  private suspend fun HttpResponse.emitError(): Boolean {
+    val location = headers[HttpHeaders.Location]
+    if (isCompletedHttpWrite(status.value, location)) {
+      return true
+    }
+    val raw = runCatching { bodyAsText() }.getOrNull()
+    if (looksLikeCloudflareAccessChallenge(status.value, location, raw)) {
       _errorFlow.emit("Cloudflare Access blocked this request. Try signing in again.")
-      return this
+      return false
     }
-    if (!this.status.isSuccess()) {
-      _errorFlow.emit(this.body<APIResponse<Nothing>>().error!!)
-    }
-    return this
+    val message = raw
+      ?.let {
+        runCatching { globalSerializer.decodeFromString<APIResponse<JsonElement?>>(it) }.getOrNull()?.error
+      }
+      ?: "Request failed (${status.value})"
+    _errorFlow.emit(message)
+    return false
   }
 
   inline fun <reified ResponseType> responseFromAdapterMessage(message: String): Pair<Boolean, APIResponse<ResponseType>> {

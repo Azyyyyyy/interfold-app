@@ -100,9 +100,8 @@ onMounted(() => {
 
   // Load app Wasm script outside the Vue context
   const script = document.createElement('script')
+  script.type = 'module'
   script.src = '/priv/app/interfold-app.js'
-  script.async = true
-  script.defer = true
   document.body.appendChild(script)
 
   window.lastWasError = false

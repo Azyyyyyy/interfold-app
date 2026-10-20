@@ -45,7 +45,10 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
+import io.ktor.http.URLBuilder
+import io.ktor.http.Url
 import io.ktor.http.isSuccess
+import io.ktor.http.takeFrom
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -55,6 +58,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.nullable
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.serializer
@@ -186,6 +191,12 @@ sealed interface ChannelMessage {
   data object SPImportFailed : ChannelMessage
 
   @Serializable
+  data class OctoconImportComplete(@SerialName("alter_count") val alterCount: Int) : ChannelMessage
+
+  @Serializable
+  data object OctoconImportFailed : ChannelMessage
+
+  @Serializable
   data class DiscordAccountLinked(@SerialName("discord_id") val discordID: String) : ChannelMessage
 
   @Serializable
@@ -296,6 +307,8 @@ sealed interface ChannelMessage {
       "pk_import_failed" to typeOf<PKImportFailed>(),
       "sp_import_complete" to typeOf<SPImportComplete>(),
       "sp_import_failed" to typeOf<SPImportFailed>(),
+      "octocon_import_complete" to typeOf<OctoconImportComplete>(),
+      "octocon_import_failed" to typeOf<OctoconImportFailed>(),
 
       "discord_account_linked" to typeOf<DiscordAccountLinked>(),
       "discord_account_unlinked" to typeOf<DiscordAccountUnlinked>(),
@@ -547,12 +560,12 @@ val httpBuilder: (token: String?, body: Any?) -> (HttpRequestBuilder.() -> Unit)
   }
 }
 
-private suspend fun get(endpoint: String, token: String?, path: String) =
+internal suspend fun get(endpoint: String, token: String?, path: String) =
   withContext(ioDispatcher) {
     client.get("$endpoint/$path", httpBuilder(token, null))
   }
 
-private suspend fun post(endpoint: String, token: String, path: String, body: Any? = null) =
+internal suspend fun post(endpoint: String, token: String, path: String, body: Any? = null) =
   withContext(ioDispatcher) {
     client.post("$endpoint/$path", httpBuilder(token, body))
   }
@@ -571,6 +584,57 @@ private suspend fun put(endpoint: String, token: String, path: String, body: Any
     client.put("$endpoint/$path", httpBuilder(token, body))
   }
 
+private suspend fun putFollowingSameOriginRedirect(
+  endpoint: String,
+  token: String,
+  path: String,
+  body: Any,
+): HttpResponse {
+  var url = "$endpoint/$path"
+  repeat(2) {
+    val response = withContext(ioDispatcher) {
+      client.put(url, httpBuilder(token, body))
+    }
+    val location = response.headers[HttpHeaders.Location]
+    if (shouldReplayWriteToRedirect(url, response.status.value, location)) {
+      url = resolveHttpUrl(url, location!!)
+    } else {
+      return response
+    }
+  }
+  return withContext(ioDispatcher) {
+    client.put(url, httpBuilder(token, body))
+  }
+}
+
+private fun resolveHttpUrl(base: String, location: String): String =
+  URLBuilder(base).takeFrom(location).buildString()
+
+/**
+ * Replay a write when the origin only rewrote the URL (trailing slash, `/api`
+ * canonicalization). Do not follow Access logins or off-host CDN Locations.
+ */
+internal fun shouldReplayWriteToRedirect(
+  requestUrl: String,
+  statusCode: Int,
+  locationHeader: String?,
+): Boolean {
+  if (statusCode !in 301..308 || locationHeader.isNullOrBlank()) return false
+  if (looksLikeCloudflareAccessChallenge(statusCode, locationHeader, null)) return false
+  val req = runCatching { Url(requestUrl) }.getOrNull() ?: return false
+  val dest = runCatching { Url(resolveHttpUrl(requestUrl, locationHeader)) }.getOrNull() ?: return false
+  if (!req.protocol.name.equals(dest.protocol.name, ignoreCase = true) ||
+    !req.host.equals(dest.host, ignoreCase = true) ||
+    req.port != dest.port
+  ) {
+    return false
+  }
+  val reqPath = req.encodedPath.trimEnd('/')
+  val destPath = dest.encodedPath.trimEnd('/')
+  return reqPath.equals(destPath, ignoreCase = true) ||
+    destPath.startsWith("/api/", ignoreCase = true)
+}
+
 /**
  * Sends a DELETE request to the Interfold API.
  *
@@ -585,30 +649,31 @@ private suspend fun delete(endpoint: String, token: String, path: String, body: 
     client.delete("$endpoint/$path", httpBuilder(token, body))
   }
 
+private fun avatarMultipart(bytes: ByteArray, fileName: String) =
+  MultiPartFormDataContent(
+    formData {
+      append("file", bytes, Headers.build {
+        append(HttpHeaders.ContentType, "image/${fileName.substringAfterLast(".")}")
+        append(HttpHeaders.ContentDisposition, "form-data; name=\"file\"; filename=\"${fileName}\"")
+      })
+    },
+    boundary = "InterfoldBoundary",
+  )
+
 suspend fun setAlterAvatar(endpoint: String, token: String, alterID: Int, bytes: ByteArray, fileName: String) =
-  put(
-    endpoint, token, "systems/me/alters/$alterID/avatar", MultiPartFormDataContent(
-      formData {
-        append("file", bytes, Headers.build {
-          append(HttpHeaders.ContentType, "image/${fileName.substringAfterLast(".")}")
-          append(HttpHeaders.ContentDisposition, "form-data; name=\"file\"; filename=\"${fileName}\"")
-        })
-      },
-      boundary = "InterfoldBoundary"
-    )
+  putFollowingSameOriginRedirect(
+    endpoint,
+    token,
+    "systems/me/alters/$alterID/avatar",
+    avatarMultipart(bytes, fileName),
   )
 
 suspend fun setSystemAvatar(endpoint: String, token: String, bytes: ByteArray, fileName: String) =
-  put(
-    endpoint, token, "settings/avatar", MultiPartFormDataContent(
-      formData {
-        append("file", bytes, Headers.build {
-          append(HttpHeaders.ContentType, "image/${fileName.substringAfterLast(".")}")
-          append(HttpHeaders.ContentDisposition, "form-data; name=\"file\"; filename=\"${fileName}\"")
-        })
-      },
-      boundary = "InterfoldBoundary"
-    )
+  putFollowingSameOriginRedirect(
+    endpoint,
+    token,
+    "settings/avatar",
+    avatarMultipart(bytes, fileName),
   )
 
 suspend fun getFrontingAlters(endpoint: String, token: String) = get(endpoint, token, "systems/me/fronting").body<APIResponse<List<MyFrontItem>>>()
@@ -643,6 +708,68 @@ suspend fun fetchIOSFirebaseConfig(endpoint: String): APIResponse<app.interfold.
 
 suspend fun fetchWebFirebaseConfig(endpoint: String): APIResponse<app.interfold.app.utils.FirebaseConfig.Web> =
   get(endpoint, null, "settings/firebase-config?platform=web").body<APIResponse<app.interfold.app.utils.FirebaseConfig.Web>>()
+
+suspend fun fetchImportFormats(endpoint: String, token: String): List<String> =
+  withContext(ioDispatcher) {
+    val response = get(endpoint, token, "settings/import/formats")
+    if (!response.status.isSuccess()) {
+      error("import formats HTTP ${response.status.value}")
+    }
+    parseFormatsListBody(response.bodyAsText())
+  }
+
+suspend fun fetchExportFormats(endpoint: String, token: String): List<String> =
+  withContext(ioDispatcher) {
+    val response = get(endpoint, token, "settings/export/formats")
+    if (!response.status.isSuccess()) {
+      error("export formats HTTP ${response.status.value}")
+    }
+    parseFormatsListBody(response.bodyAsText())
+  }
+
+suspend fun exportAccount(endpoint: String, token: String, format: String): AccountExportResult =
+  withContext(ioDispatcher) {
+    val response = get(endpoint, token, "settings/export?format=$format")
+    if (!response.status.isSuccess()) {
+      val raw = runCatching { response.bodyAsText() }.getOrNull()
+      val apiError = raw?.let {
+        runCatching {
+          globalSerializer.decodeFromString(
+            APIResponse.serializer(String.serializer().nullable),
+            it,
+          )
+        }.getOrNull()?.error
+      }
+      error(apiError ?: "export HTTP ${response.status.value}")
+    }
+    AccountExportResult(
+      bytes = response.body(),
+      fileName = exportFileNameForFormat(format),
+    )
+  }
+
+suspend fun importAccount(
+  endpoint: String,
+  token: String,
+  format: String,
+  bodyJson: String,
+): ImportOperationResponse =
+  withContext(ioDispatcher) {
+    val response = post(endpoint, token, "settings/import?format=$format", bodyJson)
+    if (response.status.value !in 200..299) {
+      val raw = runCatching { response.bodyAsText() }.getOrNull()
+      val apiError = raw?.let {
+        runCatching {
+          globalSerializer.decodeFromString(
+            APIResponse.serializer(String.serializer().nullable),
+            it,
+          )
+        }.getOrNull()?.error
+      }
+      error(apiError ?: "import HTTP ${response.status.value}")
+    }
+    parseImportOperationBody(response.bodyAsText())
+  }
 
 suspend fun checkHealthLive(endpoint: String): Boolean =
   try {

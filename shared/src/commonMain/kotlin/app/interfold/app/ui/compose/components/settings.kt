@@ -155,14 +155,16 @@ fun SettingsNavigationItem(
   spotlightDescription: String,
   cardGroupPosition: CardGroupPosition,
   url: String,
-  openURL: (String, ColorSchemeParams) -> Unit
+  openURL: (String, ColorSchemeParams) -> Unit,
+  enabled: Boolean = true
 ) {
   val colorSchemeParams = composeColorSchemeParams
   SettingsNavigationItem(
     text,
     spotlightTitle,
     spotlightDescription,
-    cardGroupPosition
+    cardGroupPosition,
+    enabled = enabled
   ) {
     openURL(url, colorSchemeParams)
   }
@@ -174,15 +176,18 @@ fun SettingsNavigationItem(
   spotlightTitle: String = text,
   spotlightDescription: String,
   cardGroupPosition: CardGroupPosition,
+  enabled: Boolean = true,
   onClick: () -> Unit
 ) {
+  val contentAlpha = if (enabled) 1f else 0.38f
+
   SpotlightTooltip(
     title = spotlightTitle,
     description = spotlightDescription
   ) {
     Surface(
       modifier = Modifier.clip(cardGroupPosition.shape).fillMaxWidth().height(64.dp)
-        .clickable(onClick = onClick),
+        .clickable(enabled = enabled, onClick = onClick),
       color = MaterialTheme.colorScheme.surfaceContainer
     ) {
       Row(
@@ -195,13 +200,14 @@ fun SettingsNavigationItem(
         ) {
           Text(
             text = text,
-            style = MaterialTheme.typography.labelLarge
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
           )
         }
         Icon(
           imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
           contentDescription = text,
-          tint = MaterialTheme.colorScheme.tertiary,
+          tint = MaterialTheme.colorScheme.tertiary.copy(alpha = contentAlpha),
           modifier = Modifier.size(24.dp)
         )
       }

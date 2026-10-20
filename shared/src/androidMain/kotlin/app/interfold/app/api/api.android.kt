@@ -1,7 +1,9 @@
 package app.interfold.app.api
 
 import app.interfold.app.telemetry.installOpenTelemetryKtorClient
+import app.interfold.app.utils.LocalNetworkAccess
 import app.interfold.app.utils.globalSerializer
+import app.interfold.kotlix.ktor.installAndroidLocalNetworkGate
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
@@ -14,7 +16,9 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 actual val client: HttpClient = HttpClient(OkHttp) {
   followRedirects = false
   engine {
+    LocalNetworkAccess.ensureGateInstalled()
     installCloudflareAccessOkHttp()
+    installAndroidLocalNetworkGate()
   }
   install(WebSockets)
   install(ContentNegotiation) {

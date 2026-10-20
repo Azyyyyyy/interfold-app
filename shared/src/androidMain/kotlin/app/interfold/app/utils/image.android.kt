@@ -56,12 +56,27 @@ actual suspend fun ImageBitmap.compress(): ByteArray =
   this.asAndroidBitmap().compressAsWebP()
 
 fun Bitmap.compressAsWebP(): ByteArray {
-  val out = ByteArrayOutputStream()
+  val (targetWidth, targetHeight) = avatarTargetSize(width, height)
+  val scaled = if (targetWidth == width && targetHeight == height) {
+    this
+  } else {
+    Bitmap.createScaledBitmap(this, targetWidth, targetHeight, true)
+  }
   val compressionFormat = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-    Bitmap.CompressFormat.WEBP_LOSSLESS
+    Bitmap.CompressFormat.WEBP_LOSSY
   } else {
     Bitmap.CompressFormat.WEBP
   }
-  this.compress(compressionFormat, 100, out)
-  return out.toByteArray()
+  var quality = AVATAR_WEBP_QUALITY
+  var bytes: ByteArray
+  do {
+    val out = ByteArrayOutputStream()
+    scaled.compress(compressionFormat, quality, out)
+    bytes = out.toByteArray()
+    quality -= 10
+  } while (bytes.size > AVATAR_MAX_BYTES && quality >= 40)
+  if (scaled !== this) {
+    scaled.recycle()
+  }
+  return bytes
 }
