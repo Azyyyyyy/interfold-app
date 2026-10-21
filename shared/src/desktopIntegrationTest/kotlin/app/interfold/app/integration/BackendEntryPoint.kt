@@ -20,11 +20,23 @@ fun main(args: Array<String>) {
     }
   })
   container.start()
-  val principal = runBlocking { obtainTestToken(container.baseUrl) }
+  val (browser, fronter) = runBlocking {
+    obtainTestToken(container.baseUrl, uid = "wasm-browser") to
+      obtainTestToken(container.baseUrl, uid = "wasm-fronter")
+  }
   readyFile.parentFile.mkdirs()
   readyFile.writeText(container.baseUrl)
-  File(readyFile.parent, "backend-token.txt").writeText(principal.token)
-  File(readyFile.parent, "backend-system-id.txt").writeText(principal.scopedSystemId)
+  File(readyFile.parent, "backend-token.txt").writeText(browser.token)
+  File(readyFile.parent, "backend-system-id.txt").writeText(browser.scopedSystemId)
+  File(readyFile.parent, "backend-token-a.txt").writeText(fronter.token)
+  File(readyFile.parent, "backend-system-id-a.txt").writeText(fronter.scopedSystemId)
+  if (!interfoldItFcmServiceAccountJson().isNullOrBlank()) {
+    File(readyFile.parent, "backend-fcm.txt").writeText("1")
+  }
+  val stopFile = File(readyFile.parent, "backend.stop")
+  stopFile.delete()
   println("[backend] ready at ${container.baseUrl}")
-  System.`in`.read()
+  while (!stopFile.exists()) {
+    Thread.sleep(500)
+  }
 }

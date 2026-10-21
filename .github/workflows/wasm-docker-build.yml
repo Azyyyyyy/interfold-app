@@ -121,7 +121,15 @@ jobs:
         run: ./gradlew :shared:desktopTest --stacktrace
 
       - name: Run :shared:desktopIntegrationTest
-        run: ./gradlew :shared:desktopIntegrationTest --stacktrace
+        run: |
+          # develop → bleeding-edge digest; main → latest digest (see BackendContainer).
+          CHANNEL=bleeding-edge
+          if [ "${GITHUB_BASE_REF:-}" = "main" ] || [ "${GITHUB_REF:-}" = "refs/heads/main" ]; then
+            CHANNEL=latest
+          fi
+          ./gradlew :shared:desktopIntegrationTest \
+            -Dinterfold.backend.channel="$CHANNEL" \
+            --stacktrace
 
       - name: Upload test reports
         if: always()
@@ -174,7 +182,14 @@ jobs:
       - name: Run :shared:wasmJsBrowserIntegrationTest
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
-        run: ./gradlew :shared:wasmJsBrowserIntegrationTest --stacktrace --no-configuration-cache
+        run: |
+          CHANNEL=bleeding-edge
+          if [ "${GITHUB_BASE_REF:-}" = "main" ] || [ "${GITHUB_REF:-}" = "refs/heads/main" ]; then
+            CHANNEL=latest
+          fi
+          ./gradlew :shared:wasmJsBrowserIntegrationTest \
+            -Dinterfold.backend.channel="$CHANNEL" \
+            --stacktrace --no-configuration-cache
 
       - name: Upload test reports
         if: always()

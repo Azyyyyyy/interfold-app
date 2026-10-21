@@ -21,7 +21,7 @@ import kotlin.time.Duration.Companion.seconds
 internal class IntegrationHarness(val baseUrl: String, val token: String) : AutoCloseable {
   val scope: CoroutineScope = CoroutineScope(SupervisorJob() + ioDispatcher)
 
-  private val settings = SettingsInterfaceImpl(
+  val settings = SettingsInterfaceImpl(
     initialSettings = Settings(apiEndpoint = baseUrl, token = token),
     settingsSaver = { },
     platformUtilities = platformUtilities,

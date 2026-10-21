@@ -3,6 +3,7 @@
 package app.interfold.app.utils
 
 import androidx.compose.runtime.Composable
+import app.interfold.app.api.model.APIResponse
 import app.interfold.app.ui.model.interfaces.ApiInterface
 import app.interfold.app.ui.model.interfaces.SettingsInterface
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -13,6 +14,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.js.ExperimentalWasmJsInterop
 import kotlin.js.Promise
+import kotlin.time.Clock
 
 /**
  * Web/wasm actual for [InitPushNotifications]. Unlike mobile, we do not receive tokens
@@ -59,7 +61,7 @@ private fun setShowPushNotifications(
     sendToken = api::updatePushNotificationToken,
     invalidateToken = api::invalidatePushNotificationToken,
     tryInit = { commit ->
-      GlobalScope.launch {
+      GlobalScope.launch(Dispatchers.Main) {
         val token = try {
           acquireWebFCMToken(
             endpoint = "${settings.data.value.apiEndpoint}/api",
@@ -70,7 +72,7 @@ private fun setShowPushNotifications(
           null
         }
 
-        if (token == null) {
+        if (token.isNullOrBlank()) {
           withContext(Dispatchers.Main) { commit(false) }
         } else {
           api.provideFirebaseMessagingToken(token)
@@ -96,49 +98,51 @@ suspend fun tryRefreshWebFCMToken(endpoint: String): String? {
   }
 }
 
-private suspend fun acquireWebFCMToken(
+internal suspend fun acquireWebFCMToken(
   endpoint: String,
-  requestPermissionIfNeeded: Boolean
-): String? {
-  if (!webPushSupported()) {
-    platformLog("PUSH", "Browser lacks service worker / Notification / PushManager support")
-    return null
+  requestPermissionIfNeeded: Boolean,
+  serviceWorkerUrl: String = "/service-worker.js",
+): String = withContext(Dispatchers.Main) {
+  check(webPushSupported()) {
+    "checkpoint web push: browser lacks service worker / Notification / PushManager"
   }
 
-  val permission = when (val current = currentNotificationPermission()) {
-    "granted" -> "granted"
-    "denied" -> {
-      platformLog("PUSH", "Notification permission is denied")
-      return null
+  val current = currentNotificationPermission()
+  if (current != "granted") {
+    check(requestPermissionIfNeeded) {
+      "checkpoint notification permission: state=$current and prompt suppressed"
     }
-    else -> {
-      if (!requestPermissionIfNeeded) {
-        platformLog("PUSH", "Notification permission not yet granted (state=$current) and prompt suppressed")
-        return null
-      }
-      requestNotificationPermission().await<JsString>().toString()
+    val requested = requestNotificationPermission().await<JsString>().toString()
+    val after = currentNotificationPermission()
+    check(requested == "granted" || after == "granted") {
+      "checkpoint notification permission: current=$current requestPermission=$requested after=$after"
     }
-  }
-  if (permission != "granted") return null
-
-  val swRegistration = try {
-    registerAndAwaitServiceWorker("/service-worker.js").await<JsAny>()
-  } catch (e: Throwable) {
-    platformLog("PUSH", "Service worker registration failed: $e")
-    return null
   }
 
   try {
     loadFirebaseCompatSDK().await<JsAny?>()
   } catch (e: Throwable) {
-    platformLog("PUSH", "Failed to load Firebase JS SDK: $e")
-    return null
+    throw IllegalStateException("checkpoint Firebase JS SDK: $e", e)
   }
 
-  val config = FirebaseConfigProvider.getConfig(FirebasePlatform.WEB, endpoint) as? FirebaseConfig.Web
-  if (config == null) {
-    platformLog("PUSH", "Expected Web Firebase config but got a different variant")
-    return null
+  // Public endpoint: omit cookies. The shared wasm HttpClient always sends
+  // `credentials: include`, which browsers reject when CORS is `*` (Karma
+  // origin ≠ API origin).
+  val config = try {
+    fetchWebFirebaseConfigOmitCredentials(endpoint)
+  } catch (e: Throwable) {
+    throw IllegalStateException("checkpoint firebase-config fetch: $e", e)
+  }
+  FirebaseConfigProvider.setCachedConfig(
+    config,
+    FirebasePlatform.WEB,
+    Clock.System.now().toEpochMilliseconds(),
+  )
+
+  val swRegistration = try {
+    registerAndAwaitServiceWorker(serviceWorkerUrl).await<JsAny>()
+  } catch (e: Throwable) {
+    throw IllegalStateException("checkpoint service worker: registration of $serviceWorkerUrl failed: $e", e)
   }
 
   initializeFirebaseApp(
@@ -151,13 +155,31 @@ private suspend fun acquireWebFCMToken(
   )
   bindForegroundMessageHandler()
 
-  return try {
+  return@withContext try {
     getFCMToken(config.vapidKey, swRegistration).await<JsString>().toString()
   } catch (e: Throwable) {
-    platformLog("PUSH", "firebase.messaging().getToken failed: $e")
-    null
+    throw IllegalStateException("checkpoint firebase getToken: $e", e)
   }
 }
+
+private suspend fun fetchWebFirebaseConfigOmitCredentials(endpoint: String): FirebaseConfig.Web {
+  val url = "${endpoint.trimEnd('/')}/settings/firebase-config?platform=web"
+  val raw = fetchTextOmitCredentials(url).await<JsString>().toString()
+  val parsed = globalSerializer.decodeFromString(
+    APIResponse.serializer(FirebaseConfig.Web.serializer()),
+    raw,
+  )
+  return parsed.data ?: error(parsed.error ?: "Empty Firebase config response")
+}
+
+@JsFun(
+  "(url) => fetch(url, { credentials: 'omit', cache: 'no-store' })" +
+    ".then(function (res) {" +
+    "if (!res.ok) throw new Error('firebase-config HTTP ' + res.status);" +
+    "return res.text();" +
+    "})",
+)
+private external fun fetchTextOmitCredentials(url: String): Promise<JsString>
 
 /* --------------- JS bindings --------------- */
 
@@ -236,3 +258,54 @@ private external fun getFCMToken(vapidKey: String, swRegistration: JsAny): Promi
     "}"
 )
 private external fun bindForegroundMessageHandler(): Boolean
+
+/**
+ * Spies production [Notification] / [showNotification] so tests assert the
+ * shown title/body rather than a raw data-only `onMessage`.
+ */
+internal fun installShownNotificationLatch() {
+  installShownNotificationLatchJs()
+}
+
+internal fun shownNotificationsSnapshot(): String =
+  shownNotificationsSnapshotJs().toString()
+
+@JsFun(
+  "() => { " +
+    "if (globalThis.__interfoldShownNotificationsInstalled) return true; " +
+    "globalThis.__interfoldShownNotifications = []; " +
+    "const Orig = window.Notification; " +
+    "function Wrapped(title, options) { " +
+    "globalThis.__interfoldShownNotifications.push({ " +
+    "title: String(title || ''), " +
+    "body: String(options && options.body || ''), " +
+    "source: 'foreground' " +
+    "}); " +
+    "try { return new Orig(title, options); } catch (e) { return undefined; } " +
+    "} " +
+    "Object.defineProperty(Wrapped, 'permission', { " +
+    "get: function () { return Orig && Orig.permission ? Orig.permission : 'default'; } " +
+    "}); " +
+    "Wrapped.requestPermission = function () { " +
+    "return Orig && Orig.requestPermission ? Orig.requestPermission.apply(Orig, arguments) : Promise.resolve('denied'); " +
+    "}; " +
+    "window.Notification = Wrapped; " +
+    "if (typeof ServiceWorkerRegistration !== 'undefined' && ServiceWorkerRegistration.prototype.showNotification) { " +
+    "const origShow = ServiceWorkerRegistration.prototype.showNotification; " +
+    "ServiceWorkerRegistration.prototype.showNotification = function (title, options) { " +
+    "globalThis.__interfoldShownNotifications.push({ " +
+    "title: String(title || ''), " +
+    "body: String(options && options.body || ''), " +
+    "source: 'background' " +
+    "}); " +
+    "try { return origShow.apply(this, arguments); } catch (e) { return Promise.resolve(); } " +
+    "}; " +
+    "} " +
+    "globalThis.__interfoldShownNotificationsInstalled = true; " +
+    "return true; " +
+    "}"
+)
+private external fun installShownNotificationLatchJs(): Boolean
+
+@JsFun("() => JSON.stringify(globalThis.__interfoldShownNotifications || [])")
+private external fun shownNotificationsSnapshotJs(): JsString

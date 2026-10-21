@@ -475,14 +475,20 @@ tasks.register<Test>("desktopIntegrationTest") {
   classpath =
     integrationCompilation.runtimeDependencyFiles + integrationCompilation.output.allOutputs
   useJUnitPlatform()
-  // Forward the image override knob so `-Dinterfold.backend.image=...` works.
+  // Forward image/channel knobs so `-Dinterfold.backend.image=...` and
+  // `-Dinterfold.backend.channel=bleeding-edge|latest` reach BackendContainer.
   systemProperty("interfold.backend.image", System.getProperty("interfold.backend.image", ""))
+  systemProperty(
+    "interfold.backend.channel",
+    System.getProperty("interfold.backend.channel", ""),
+  )
   // Forward Docker / Testcontainers env vars to the worker JVM. Gradle does
   // NOT inherit shell env into test workers by default, so without this the
   // Testcontainers DockerClientProviderStrategy can't find the daemon — even
   // when `docker info` from the launching shell works fine. Only forwards
   // each variable when it is actually set on the launching env, so machines
   // that rely on the default `unix:///var/run/docker.sock` aren't affected.
+  // GITHUB_* refs let BackendContainer map app branch → API channel in CI.
   listOf(
     "DOCKER_HOST",
     "DOCKER_TLS_VERIFY",
@@ -490,6 +496,13 @@ tasks.register<Test>("desktopIntegrationTest") {
     "TESTCONTAINERS_HOST_OVERRIDE",
     "TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE",
     "TESTCONTAINERS_RYUK_DISABLED",
+    "GITHUB_REF",
+    "GITHUB_BASE_REF",
+    "GITHUB_HEAD_REF",
+    "INTERFOLD_IT_FCM_SERVICE_ACCOUNT_JSON",
+    "INTERFOLD_IT_FIREBASE_WEB_JSON",
+    "INTERFOLD_IT_FIREBASE_ANDROID_JSON",
+    "INTERFOLD_IT_FIREBASE_IOS_JSON",
   ).forEach { name ->
     System.getenv(name)?.let { environment(name, it) }
   }
@@ -595,6 +608,16 @@ val startWasmIntegrationBackend = tasks.register("startWasmIntegrationBackend") 
     argsFile.writeText(
       buildString {
         appendLine("-Dinterfold.backend.port=$port")
+        // Same image/channel knobs as desktopIntegrationTest so wasm IT
+        // tracks develop→bleeding-edge / main→latest.
+        val imageOverride = System.getProperty("interfold.backend.image", "")
+        if (imageOverride.isNotBlank()) {
+          appendLine("-Dinterfold.backend.image=$imageOverride")
+        }
+        val channelOverride = System.getProperty("interfold.backend.channel", "")
+        if (channelOverride.isNotBlank()) {
+          appendLine("-Dinterfold.backend.channel=$channelOverride")
+        }
         appendLine("-cp")
         appendLine("\"$cp\"")
         appendLine("app.interfold.app.integration.BackendEntryPointKt")
@@ -605,6 +628,17 @@ val startWasmIntegrationBackend = tasks.register("startWasmIntegrationBackend") 
     pb.redirectErrorStream(true)
     pb.redirectOutput(logFile)
     pb.directory(workDir)
+    listOf(
+      "GITHUB_REF",
+      "GITHUB_BASE_REF",
+      "GITHUB_HEAD_REF",
+      "INTERFOLD_IT_FCM_SERVICE_ACCOUNT_JSON",
+      "INTERFOLD_IT_FIREBASE_WEB_JSON",
+      "INTERFOLD_IT_FIREBASE_ANDROID_JSON",
+      "INTERFOLD_IT_FIREBASE_IOS_JSON",
+    ).forEach { name ->
+      System.getenv(name)?.let { pb.environment()[name] = it }
+    }
     val process = pb.start()
     pidFile.writeText(process.pid().toString())
     val deadline = System.currentTimeMillis() + 120_000
@@ -650,6 +684,7 @@ val stopWasmIntegrationBackend = tasks.register("stopWasmIntegrationBackend") {
         }
       }
     }
+    File(urlFile.parent, "backend.stop").writeText("1")
     if (urlFile.exists()) urlFile.delete()
   }
 }
@@ -670,6 +705,19 @@ tasks.matching { it.name.contains("wasmJs") && it.name.contains("Test") }.config
       .skipWhenEmpty()
   }
   doFirst {
+    val headed = System.getProperty("interfold.chrome.headed") == "1" ||
+      System.getenv("INTERFOLD_CHROME_HEADED") == "1"
+    val destDir = karmaUrlOut.get().asFile.parentFile
+    destDir.mkdirs()
+    val headedMarker = File(destDir, "chrome-headed.txt")
+    if (headed) {
+      headedMarker.writeText("1")
+      if (this is org.gradle.process.ProcessForkOptions) {
+        environment("INTERFOLD_CHROME_HEADED", "1")
+      }
+    } else if (headedMarker.exists()) {
+      headedMarker.delete()
+    }
     val src = urlIn.get().asFile
     if (src.exists()) {
       val url = src.readText().trim()
@@ -685,6 +733,18 @@ tasks.matching { it.name.contains("wasmJs") && it.name.contains("Test") }.config
           val tokenFile = File(src.parentFile, "backend-token.txt")
           if (tokenFile.exists()) {
             environment("INTERFOLD_BACKEND_TOKEN", tokenFile.readText().trim())
+          }
+          val tokenAFile = File(src.parentFile, "backend-token-a.txt")
+          if (tokenAFile.exists()) {
+            environment("INTERFOLD_BACKEND_TOKEN_A", tokenAFile.readText().trim())
+          }
+          val systemAFile = File(src.parentFile, "backend-system-id-a.txt")
+          if (systemAFile.exists()) {
+            environment("INTERFOLD_BACKEND_SYSTEM_ID_A", systemAFile.readText().trim())
+          }
+          val fcmMarker = File(src.parentFile, "backend-fcm.txt")
+          if (fcmMarker.exists() || !System.getenv("INTERFOLD_IT_FCM_SERVICE_ACCOUNT_JSON").isNullOrBlank()) {
+            environment("INTERFOLD_IT_FCM_ENABLED", "1")
           }
         }
       }

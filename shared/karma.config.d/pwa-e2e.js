@@ -66,10 +66,14 @@ if (pwaE2eFs.existsSync(pwaE2eSwFile) && pwaE2eFs.existsSync(pwaE2eSwJsFile)) {
     { pattern: pwaE2eSwJsFile.replace(/\\/g, "/"), included: false, served: true, watched: false },
   );
   const pwaE2eToAbsolute = (filePath) => "/absolute" + filePath.replace(/\\/g, "/");
-  config.proxies = Object.assign({}, config.proxies, {
-    "/service-worker.js": pwaE2eToAbsolute(pwaE2eSwFile),
-    "/interfold-sw.js": pwaE2eToAbsolute(pwaE2eSwJsFile),
-  });
+  const pwaE2eProxies = {};
+  // FCM ITs need the production /service-worker.js (Firebase + runtime-config)
+  // and must not install the PWA e2e fetch interceptor as /interfold-sw.js.
+  if (!(typeof interfoldFcmIt !== "undefined" && interfoldFcmIt)) {
+    pwaE2eProxies["/interfold-sw.js"] = pwaE2eToAbsolute(pwaE2eSwJsFile);
+    pwaE2eProxies["/service-worker.js"] = pwaE2eToAbsolute(pwaE2eSwFile);
+  }
+  config.proxies = Object.assign({}, config.proxies, pwaE2eProxies);
   config.customHeaders = (config.customHeaders || []).concat([
     { match: "service-worker\\.js$", name: "Service-Worker-Allowed", value: "/" },
     { match: "service-worker\\.js$", name: "Cache-Control", value: "no-cache" },
