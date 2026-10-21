@@ -58,7 +58,6 @@ fs.writeFileSync(
     "  var skip = {",
     "    loadClient_completesInit_overInMemoryBackend: true,",
     "    createAlter_emitsAlterCreatedEvent: true,",
-    "    googleLogin_exchangesCode_overMockProvider: true,",
     "    friendFront_showsBrowserNotification: true",
     "  };",
     "  function wrap(origIt) {",

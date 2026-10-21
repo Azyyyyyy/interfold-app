@@ -19,8 +19,4 @@ class BackendIntegrationTest {
   @Test
   fun createAlter_emitsAlterCreatedEvent() =
     runBackendIntegrationTest(timeout = 60.seconds, ::assertCreateAlterEmitsEventOverBackend)
-
-  @Test
-  fun googleLogin_exchangesCode_overMockProvider() =
-    runBackendIntegrationTest(timeout = 60.seconds, ::assertGoogleLoginExchangesCodeOverMock)
 }

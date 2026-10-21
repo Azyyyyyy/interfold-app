@@ -23,6 +23,9 @@ import kotlin.time.Duration.Companion.seconds
  * [LoginComponent.logInWithGoogle] → captured [openURL] → mock Google authorize
  * → `/auth/google/callback` → `interfold://auth/token` → [PlatformEvent.LoginTokenReceived]
  * → [RootComponent.tryLoadClient].
+ *
+ * Desktop-only. Kotlin/Wasm browser fetch cannot set the redirect cookie or
+ * read a cross-origin 302 Location (see [obtainTestToken]).
  */
 internal suspend fun assertGoogleLoginExchangesCodeOverMock(baseUrl: String) {
   ClientLoginHarness(baseUrl).use { harness ->
