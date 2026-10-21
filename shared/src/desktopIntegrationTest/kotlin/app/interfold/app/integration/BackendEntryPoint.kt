@@ -32,7 +32,7 @@ fun main(args: Array<String>) {
   File(readyFile.parent, "backend-system-id-a.txt").writeText(fronter.scopedSystemId)
   val fcmMarker = File(readyFile.parent, "backend-fcm.txt")
   if (!interfoldItFcmServiceAccountJson().isNullOrBlank() &&
-    runBlocking { fcmOutboxPresent(container.baseUrl) }
+    runBlocking { fcmOutboxPresent(container.baseUrl, browser.token) }
   ) {
     fcmMarker.writeText("1")
   } else {

@@ -161,9 +161,9 @@ class BackendContainer : GenericContainer<BackendContainer>(resolveImage()) {
     const val CHANNEL_LATEST = "latest"
 
     // Digest of ghcr.io/azyyyyyy/interfold-api:bleeding-edge @ upstream
-    // 675863a4 (2026-10-20, develop tip when pinned).
+    // 86651c89 (2026-10-21, #61 merge; includes #60 TEST_HOOKS / FCM seed).
     private const val BLEEDING_EDGE_IMAGE =
-      "ghcr.io/azyyyyyy/interfold-api@sha256:d68764d9026395fde35e80c63785ad7f39d4d5cc1c30b767c8873c478d1512eb"
+      "ghcr.io/azyyyyyy/interfold-api@sha256:04806d3a3a6f58ec770b27cd7aa35363a59748065ca405076106a7158d930c56"
 
     // Digest of ghcr.io/azyyyyyy/interfold-api:latest @ upstream
     // 4e1981a4 (2026-10-03, main tip when pinned).

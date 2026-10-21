@@ -163,12 +163,18 @@ internal suspend fun acceptFriendRequestHttp(baseUrl: String, token: String, fri
   }
 }
 
-/** False when the API image has no TEST_HOOKS outbox (404). */
-internal suspend fun fcmOutboxPresent(baseUrl: String): Boolean {
+/**
+ * True only when an authenticated GET returns 2xx. An unauthenticated probe
+ * is 401 on images that have no route (global [Authorize]) *and* on images
+ * that have the outbox, so it cannot tell them apart.
+ */
+internal suspend fun fcmOutboxPresent(baseUrl: String, token: String): Boolean {
   val client = createJsonHttpClient()
   return try {
-    val response = client.get("$baseUrl/api/internal/test/fcm-sends")
-    response.status.value != 404
+    val response = client.get("$baseUrl/api/internal/test/fcm-sends") {
+      bearerAuth(token)
+    }
+    response.status.isSuccess()
   } catch (_: Exception) {
     false
   } finally {

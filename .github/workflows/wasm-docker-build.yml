@@ -81,8 +81,9 @@ jobs:
       # google_apis so Friend-front FCM can call FirebaseMessaging.getToken.
       # Shared device tests stay on this AVD; ITs start the in-memory backend
       # and skip if INTERFOLD_IT_* secrets or Play Services are missing.
-      # emulator-runner runs each script line as its own `sh -c`, so this
-      # must stay a single command (no if/fi across lines).
+      # emulator-runner runs each script line as its own `sh -c`, so keep
+      # each Gradle invocation on one line (no if/fi). Combined invocation
+      # trips configuration-cache on ensureAndroidEmulator / connected tests.
       - name: Run Android device and integration tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -92,7 +93,9 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: ./gradlew :shared:connectedAndroidDeviceTest :androidApp:androidDeviceIntegrationTest -Dinterfold.backend.channel=${{ github.event.pull_request.base.ref == 'main' && 'latest' || 'bleeding-edge' }} --stacktrace
+          script: |
+            ./gradlew :shared:connectedAndroidDeviceTest --stacktrace
+            ./gradlew :androidApp:androidDeviceIntegrationTest -Dinterfold.backend.channel=${{ github.event.pull_request.base.ref == 'main' && 'latest' || 'bleeding-edge' }} --stacktrace --no-configuration-cache
 
       - name: Upload test reports
         if: always()
