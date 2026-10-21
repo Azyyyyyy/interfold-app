@@ -163,6 +163,19 @@ internal suspend fun acceptFriendRequestHttp(baseUrl: String, token: String, fri
   }
 }
 
+/** False when the API image has no TEST_HOOKS outbox (404). */
+internal suspend fun fcmOutboxPresent(baseUrl: String): Boolean {
+  val client = createJsonHttpClient()
+  return try {
+    val response = client.get("$baseUrl/api/internal/test/fcm-sends")
+    response.status.value != 404
+  } catch (_: Exception) {
+    false
+  } finally {
+    client.close()
+  }
+}
+
 internal suspend fun fetchFcmSends(baseUrl: String, token: String): List<FcmSendAttemptDto> {
   val client = createJsonHttpClient()
   try {

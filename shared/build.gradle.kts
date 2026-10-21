@@ -743,8 +743,11 @@ tasks.matching { it.name.contains("wasmJs") && it.name.contains("Test") }.config
             environment("INTERFOLD_BACKEND_SYSTEM_ID_A", systemAFile.readText().trim())
           }
           val fcmMarker = File(src.parentFile, "backend-fcm.txt")
-          if (fcmMarker.exists() || !System.getenv("INTERFOLD_IT_FCM_SERVICE_ACCOUNT_JSON").isNullOrBlank()) {
+          val destFcm = File(destDir, "backend-fcm.txt")
+          if (fcmMarker.exists() && fcmMarker.readText().trim() == "1") {
             environment("INTERFOLD_IT_FCM_ENABLED", "1")
+          } else {
+            destFcm.delete()
           }
         }
       }

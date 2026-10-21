@@ -30,8 +30,13 @@ fun main(args: Array<String>) {
   File(readyFile.parent, "backend-system-id.txt").writeText(browser.scopedSystemId)
   File(readyFile.parent, "backend-token-a.txt").writeText(fronter.token)
   File(readyFile.parent, "backend-system-id-a.txt").writeText(fronter.scopedSystemId)
-  if (!interfoldItFcmServiceAccountJson().isNullOrBlank()) {
-    File(readyFile.parent, "backend-fcm.txt").writeText("1")
+  val fcmMarker = File(readyFile.parent, "backend-fcm.txt")
+  if (!interfoldItFcmServiceAccountJson().isNullOrBlank() &&
+    runBlocking { fcmOutboxPresent(container.baseUrl) }
+  ) {
+    fcmMarker.writeText("1")
+  } else {
+    fcmMarker.delete()
   }
   val stopFile = File(readyFile.parent, "backend.stop")
   stopFile.delete()

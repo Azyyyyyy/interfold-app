@@ -81,6 +81,8 @@ jobs:
       # google_apis so Friend-front FCM can call FirebaseMessaging.getToken.
       # Shared device tests stay on this AVD; ITs start the in-memory backend
       # and skip if INTERFOLD_IT_* secrets or Play Services are missing.
+      # emulator-runner runs each script line as its own `sh -c`, so this
+      # must stay a single command (no if/fi across lines).
       - name: Run Android device and integration tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -90,15 +92,7 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: |
-            ./gradlew :shared:connectedAndroidDeviceTest --stacktrace
-            CHANNEL=bleeding-edge
-            if [ "${GITHUB_BASE_REF:-}" = "main" ] || [ "${GITHUB_REF:-}" = "refs/heads/main" ]; then
-              CHANNEL=latest
-            fi
-            ./gradlew :androidApp:androidDeviceIntegrationTest \
-              -Dinterfold.backend.channel="$CHANNEL" \
-              --stacktrace
+          script: ./gradlew :shared:connectedAndroidDeviceTest :androidApp:androidDeviceIntegrationTest -Dinterfold.backend.channel=${{ github.event.pull_request.base.ref == 'main' && 'latest' || 'bleeding-edge' }} --stacktrace
 
       - name: Upload test reports
         if: always()
@@ -116,8 +110,8 @@ jobs:
   # and can reach bridge IPs (needed by BackendContainer.baseUrl).
   #
   # Friend-front FCM ITs skip unless the INTERFOLD_IT_* secrets are set and
-  # the API image seeds in-memory FCM (TEST_HOOKS outbox). Empty secrets
-  # stay a skip, not a fail.
+  # the API image has TEST_HOOKS (/api/internal/test/fcm-sends). Empty
+  # secrets or a pre-hooks digest stay a skip, not a fail.
   desktop-test:
     name: shared :desktopTest
     runs-on: ubuntu-latest

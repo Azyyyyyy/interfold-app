@@ -29,6 +29,11 @@ class FriendFrontFcmDesktopTest {
 }
 
 internal suspend fun assertFriendFrontSendsFcm(baseUrl: String) {
+  assumeTrue(
+    fcmOutboxPresent(baseUrl),
+    "Skip: API image has no TEST_HOOKS outbox (GET /api/internal/test/fcm-sends → 404). " +
+      "Bump BLEEDING_EDGE_IMAGE after develop publishes the friend-front FCM hooks.",
+  )
   val suffix = Clock.System.now().toEpochMilliseconds().toString(36)
   val aliceName = "alice-$suffix"
   val bobName = "bob-$suffix"
