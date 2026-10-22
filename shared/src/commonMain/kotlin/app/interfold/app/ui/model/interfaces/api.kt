@@ -14,6 +14,7 @@ import app.interfold.app.api.PhoenixSocketSessionFactory
 import app.interfold.app.api.SocketAdapterResponse
 import app.interfold.app.api.buildEndpointPayload
 import app.interfold.app.api.clusterFrontData
+import app.interfold.app.api.removeFrontFromClusteredHistory
 import app.interfold.app.api.exportAccount as httpExportAccount
 import app.interfold.app.api.fetchExportFormats as httpFetchExportFormats
 import app.interfold.app.api.fetchImportFormats as httpFetchImportFormats
@@ -570,10 +571,8 @@ internal class ApiInterfaceImpl(
 
         _frontHistory.tryEmit(
           _frontHistory.value.mapValues { (_, value) ->
-            return@mapValues if (value.isSuccess) {
-              APIState.Success(value.ensureData.map { (triple, second) ->
-                Pair(triple, second.filter { it.frontID != message.frontID }.toMutableList())
-              })
+            if (value.isSuccess) {
+              APIState.Success(removeFrontFromClusteredHistory(value.ensureData, message.frontID))
             } else {
               value
             }
@@ -1784,6 +1783,10 @@ internal class ApiInterfaceImpl(
 
   override fun updateDescription(description: String?) {
     if (_systemMe.value !is APIState.Success) return
+    val current = _systemMe.value.ensureData
+    if (current.description != description) {
+      _systemMe.tryEmit(APIState.Success(current.copy(description = description)))
+    }
     sendAPIRequest(
       Post,
       "settings/description",
