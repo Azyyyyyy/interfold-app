@@ -699,6 +699,11 @@ suspend fun invalidatePushNotificationToken(endpoint: String, token: String, pus
 suspend fun fetchPublicKey(endpoint: String): APIResponse<String> =
   get(endpoint, null, "settings/public-key").body<APIResponse<String>>()
 
+@Serializable
+data class DiscordBotPresence(
+  val active: Boolean = false,
+)
+
 suspend fun fetchAndroidFirebaseConfig(endpoint: String): APIResponse<app.interfold.app.utils.FirebaseConfig.Android> =
   get(endpoint, null, "settings/firebase-config?platform=android").body<APIResponse<app.interfold.app.utils.FirebaseConfig.Android>>()
 

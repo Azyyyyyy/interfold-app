@@ -206,9 +206,11 @@ fun AlterViewBasicInfoTab(
   val cropState = imageCropper?.imageCropper?.cropState
   var avatarState by state(AvatarState.Loaded)
 
+  val discordBotActive by api.discordBotActive.collectAsState()
   val discordLinked by derive {
     system.ensureData.discordID != null
   }
+  val showDiscordBotUi = discordBotActive && discordLinked
 
   @Suppress("LocalVariableName")
   val unnamed_alter = Res.string.unnamed_alter.compose
@@ -274,19 +276,6 @@ fun AlterViewBasicInfoTab(
       }
     }
   )
-
-  // val nameState = rememberTextFieldState(model.name.value.orEmpty())
-  // val pronounsState = rememberTextFieldState(model.pronouns.value.orEmpty())
-  // val descriptionState = rememberTextFieldState()
-  // val aliasState = rememberTextFieldState()
-  // val proxyNameState = rememberTextFieldState()
-
-  /*UpdateTextFieldStatesOnLoad(
-    model.isLoaded,
-    descriptionState to model.description,
-    aliasState to model.alias,
-    proxyNameState to model.proxyName
-  )*/
 
   CompositionLocalProvider(
     LocalFieldFocusRequester provides focusRequester,
@@ -464,13 +453,6 @@ fun AlterViewBasicInfoTab(
           label = Res.string.description.compose,
           placeholder = Res.string.no_description.compose
         )
-        /*MarkdownOutlinedTextField(
-          internalValue = description,
-          state = descriptionState,
-          update = model::updateDescription,
-          label = Res.string.description.compose,
-          placeholder = Res.string.no_description.compose
-        )*/
       }
 
       item {
@@ -591,11 +573,7 @@ fun AlterViewBasicInfoTab(
         }
       }
 
-      /*item {
-        Divider(modifier = Modifier.padding(horizontal = 16.dp))
-      }*/
-
-      if (discordLinked) {
+      if (showDiscordBotUi) {
         item {
           Row(
             modifier = Modifier.fillMaxWidth()
