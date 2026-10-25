@@ -1,12 +1,15 @@
 package app.interfold.app.api
 
 import app.interfold.app.Settings
+import app.interfold.app.api.model.APIResponse
 import app.interfold.app.api.model.MyAlter
+import app.interfold.app.api.model.MyFront
 import app.interfold.app.api.model.MySystem
 import app.interfold.app.api.model.SecurityLevel
 import app.interfold.app.api.model.SocketInitResponse
 import app.interfold.app.ui.compose.screens.main.hometabs.FakeSettingsInterface
 import app.interfold.app.ui.model.interfaces.ApiInterfaceImpl
+import app.interfold.app.utils.MonthYearPair
 import app.interfold.app.utils.failingPlatformUtilities
 import app.interfold.app.utils.globalSerializer
 import kotlinx.coroutines.CompletableDeferred
@@ -15,6 +18,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toInstant
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -125,6 +131,108 @@ class ApiInterfaceImplIntegrationTest {
       assertEquals("Eve", alters.ensureData.single().name)
   }
 
+  @Test
+  fun updateDescription_postsSettingsDescription_andPersistsOnSystemMe() = runTest(timeout = 10.seconds) {
+      val factory = FakePhoenixSocketSessionFactory(
+        socketInitResponse = globalSerializer.encodeToString(
+          SocketInitResponse(
+            system = sampleSystem("system-desc", description = "old bio"),
+            alters = emptyList(),
+            tags = emptyList(),
+            fronts = emptyList(),
+          )
+        ),
+      )
+      val api = newApi(factory)
+      api.loadClient(dummyJwt(sub = "system-desc")).join()
+
+      val session = assertNotNull(factory.lastSession, "factory should have created a session")
+      val received = CompletableDeferred<FakePhoenixSocketSession.SentEndpoint>()
+      session.endpointHandler = { method, path, body ->
+        received.complete(FakePhoenixSocketSession.SentEndpoint(method, path, body))
+        SocketAdapterResponse(status = 200, body = "")
+      }
+
+      api.updateDescription("new bio")
+      val sent = received.await()
+
+      assertEquals("POST", sent.method)
+      assertEquals("/api/settings/description", sent.path)
+      assertTrue(
+        sent.body.contains("\"description\":\"new bio\""),
+        "expected description in body, was: ${sent.body}"
+      )
+
+      val system = api.systemMe.first { it is APIState.Success && it.ensureData.description == "new bio" }
+      assertTrue(system is APIState.Success)
+      assertEquals("new bio", system.ensureData.description)
+  }
+
+  @Test
+  fun channelEvent_selfUpdated_appliesNewDescription() = runTest(timeout = 10.seconds) {
+      val factory = FakePhoenixSocketSessionFactory(
+        socketInitResponse = globalSerializer.encodeToString(
+          SocketInitResponse(
+            system = sampleSystem("system-self", description = "old bio"),
+            alters = emptyList(),
+            tags = emptyList(),
+            fronts = emptyList(),
+          )
+        ),
+      )
+      val api = newApi(factory)
+      api.loadClient(dummyJwt(sub = "system-self")).join()
+      val session = assertNotNull(factory.lastSession)
+
+      session.emitChannelEvent(
+        ChannelMessage.SelfUpdated(sampleSystem("system-self", description = "socket bio"))
+      )
+
+      val system = api.systemMe.first { it is APIState.Success && it.ensureData.description == "socket bio" }
+      assertTrue(system is APIState.Success)
+      assertEquals("socket bio", system.ensureData.description)
+  }
+
+  @Test
+  fun channelEvent_frontDeleted_lastEntryForMonth_leavesEmptyHistory() = runTest(timeout = 10.seconds) {
+      val month = sampleMonth()
+      val front = sampleFront(id = "front-only", month = month)
+      val (api, session) = apiWithLoadedFrontHistory(listOf(front), month)
+
+      session.emitChannelEvent(ChannelMessage.FrontDeleted(frontID = "front-only"))
+
+      val history = api.frontHistory.first { monthState ->
+        val state = monthState[month]
+        state is APIState.Success && state.ensureData.isEmpty()
+      }
+      val monthState = history[month]
+      assertTrue(monthState is APIState.Success, "month should stay Success so the empty-state UI can render")
+      assertEquals(
+        emptyList(),
+        monthState.ensureData,
+        "deleting the last front of the month must drop empty day groups, otherwise FrontHistoryScreen keeps headers and skips 'No front history for this month.'"
+      )
+  }
+
+  @Test
+  fun channelEvent_frontDeleted_keepsOtherEntryOnSameDay() = runTest(timeout = 10.seconds) {
+      val month = sampleMonth()
+      val kept = sampleFront(id = "front-kept", month = month, startHour = 10)
+      val removed = sampleFront(id = "front-removed", month = month, startHour = 14)
+      val (api, session) = apiWithLoadedFrontHistory(listOf(kept, removed), month)
+
+      session.emitChannelEvent(ChannelMessage.FrontDeleted(frontID = "front-removed"))
+
+      val history = api.frontHistory.first { monthState ->
+        val state = monthState[month]
+        state is APIState.Success &&
+          state.ensureData.any { group -> group.second.any { it.frontID == "front-kept" } } &&
+          state.ensureData.none { group -> group.second.any { it.frontID == "front-removed" } }
+      }
+      val remainingIds = history[month]!!.ensureData.flatMap { it.second }.map { it.frontID }.distinct()
+      assertEquals(listOf("front-kept"), remainingIds)
+  }
+
   private fun newApi(factory: FakePhoenixSocketSessionFactory): ApiInterfaceImpl {
     val scope = CoroutineScope(Dispatchers.Unconfined + SupervisorJob())
     return ApiInterfaceImpl(
@@ -135,9 +243,58 @@ class ApiInterfaceImplIntegrationTest {
     )
   }
 
-  private fun sampleSystem(id: String): MySystem = MySystem(
+  private suspend fun apiWithLoadedFrontHistory(
+    fronts: List<MyFront>,
+    month: MonthYearPair,
+  ): Pair<ApiInterfaceImpl, FakePhoenixSocketSession> {
+    val factory = FakePhoenixSocketSessionFactory(
+      socketInitResponse = globalSerializer.encodeToString(
+        SocketInitResponse(
+          system = sampleSystem("system-fronts"),
+          alters = emptyList(),
+          tags = emptyList(),
+          fronts = emptyList(),
+        )
+      ),
+    )
+    val api = newApi(factory)
+    api.loadClient(dummyJwt(sub = "system-fronts")).join()
+    val session = assertNotNull(factory.lastSession, "factory should have created a session")
+    session.endpointHandler = { _, path, _ ->
+      require(path.contains("systems/me/front/between")) { "unexpected path $path" }
+      SocketAdapterResponse(
+        status = 200,
+        body = globalSerializer.encodeToString(APIResponse.success(fronts)),
+      )
+    }
+    api.loadFrontHistory(month, force = true)
+    api.frontHistory.first { it[month] is APIState.Success }
+    return api to session
+  }
+
+  private fun sampleMonth(): MonthYearPair = 2024 to 3
+
+  private fun sampleFront(
+    id: String,
+    month: MonthYearPair,
+    startHour: Int = 10,
+  ): MyFront {
+    val zone = TimeZone.currentSystemDefault()
+    val start = LocalDateTime(month.first, month.second, 15, startHour, 0).toInstant(zone)
+    val end = LocalDateTime(month.first, month.second, 15, startHour + 2, 0).toInstant(zone)
+    return MyFront(
+      id = id,
+      alterID = 1,
+      timeStart = start,
+      timeEnd = end,
+      userID = "system-fronts",
+    )
+  }
+
+  private fun sampleSystem(id: String, description: String? = null): MySystem = MySystem(
     autoproxyMode = "off",
     id = id,
+    description = description,
     lifetimeAlterCount = 0,
     showSystemTag = false,
     fields = emptyList(),

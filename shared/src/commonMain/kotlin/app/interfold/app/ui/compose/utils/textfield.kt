@@ -197,6 +197,15 @@ fun MarkdownOutlinedTextField(
   }
 
   var textValue by remember { mutableStateOf(TextFieldValue(value.orEmpty())) }
+  var wasShowingEditor by remember { mutableStateOf(false) }
+
+  LaunchedEffect(showRealTextField.value) {
+    val showing = showRealTextField.value
+    if (wasShowingEditor && !showing) {
+      onFinishEditing?.invoke()
+    }
+    wasShowingEditor = showing
+  }
 
   LaunchedEffect(value) {
     val newText = value.orEmpty()
@@ -245,7 +254,6 @@ fun MarkdownOutlinedTextField(
       FinishEditingFieldButton(
         onClick = {
           showRealTextField.value = false
-          onFinishEditing?.invoke()
         },
         clickLabel = "Save $label"
       )
