@@ -20,6 +20,7 @@ import com.arkivanov.decompose.router.stack.replaceAll
 import com.arkivanov.decompose.value.Value
 import com.arkivanov.essenty.backhandler.BackHandlerOwner
 import com.arkivanov.essenty.instancekeeper.retainedInstance
+import com.arkivanov.essenty.lifecycle.Lifecycle
 import com.arkivanov.essenty.lifecycle.coroutines.coroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
@@ -86,11 +87,21 @@ class RootComponentImpl(
 
   init {
     Telemetry.install()
+    var lastApiEndpoint = initialSettings.apiEndpoint
     coroutineScope.launch {
       settings.data.collect { snapshot ->
         Telemetry.syncFromSettings(snapshot)
+        if (snapshot.apiEndpoint != lastApiEndpoint) {
+          lastApiEndpoint = snapshot.apiEndpoint
+          api.refreshDiscordBotPresence()
+        }
       }
     }
+    lifecycle.subscribe(object : Lifecycle.Callbacks {
+      override fun onResume() {
+        api.refreshDiscordBotPresence()
+      }
+    })
     if (!initialSettings.stealthModeEnabled && !initialSettings.tokenIsProtected && initialSettings.token != null) {
       tryLoadClient(initialSettings.token)
     }

@@ -46,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupProperties
+import app.interfold.app.api.hasVisibleFrontHistory
 import app.interfold.app.ui.compose.LocalNavigationType
 import app.interfold.app.ui.compose.LocalUpdateLazyListState
 import app.interfold.app.ui.compose.NavigationType
@@ -285,7 +286,7 @@ fun FrontHistoryScreen(
             IndeterminateProgressSpinner()
           }
         } else {
-          if (clusteredFrontHistory.isEmpty()) {
+          if (!hasVisibleFrontHistory(clusteredFrontHistory)) {
             item {
               Row(
                 modifier = Modifier.padding(GLOBAL_PADDING).fillMaxWidth(),

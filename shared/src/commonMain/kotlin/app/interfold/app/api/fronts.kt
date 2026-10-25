@@ -85,3 +85,15 @@ fun clusterFrontData(
     )
   ).reversed()
 }
+
+fun removeFrontFromClusteredHistory(
+  clustered: List<Pair<Triple<Int, Month, Int>, MutableList<FrontHistoryItem>>>,
+  frontID: String
+): List<Pair<Triple<Int, Month, Int>, MutableList<FrontHistoryItem>>> =
+  clustered.map { (triple, items) ->
+    Pair(triple, items.filter { it.frontID != frontID }.toMutableList())
+  }.filter { it.second.isNotEmpty() }
+
+fun hasVisibleFrontHistory(
+  clustered: List<Pair<Triple<Int, Month, Int>, List<FrontHistoryItem>>>
+): Boolean = clustered.any { it.second.isNotEmpty() }
