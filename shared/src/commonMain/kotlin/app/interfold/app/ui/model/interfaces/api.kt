@@ -14,9 +14,11 @@ import app.interfold.app.api.PhoenixSocketSessionFactory
 import app.interfold.app.api.SocketAdapterResponse
 import app.interfold.app.api.buildEndpointPayload
 import app.interfold.app.api.clusterFrontData
+import app.interfold.app.api.DiscordBotPresence
 import app.interfold.app.api.exportAccount as httpExportAccount
 import app.interfold.app.api.fetchExportFormats as httpFetchExportFormats
 import app.interfold.app.api.fetchImportFormats as httpFetchImportFormats
+import app.interfold.app.api.get
 import app.interfold.app.api.importAccount as httpImportAccount
 import app.interfold.app.api.model.APIError
 import app.interfold.app.api.model.APIResponse
@@ -104,9 +106,11 @@ interface ApiInterface {
   val friendDataMap: StateFlow<Map<String, APIState<CollatedFriendData>>>
   val friendRequests: StateFlow<APIState<FriendRequests>>
   val encryptionIsInitializing: StateFlow<Boolean>
+  val discordBotActive: StateFlow<Boolean>
 
   fun loadClient(initialToken: String): Job
   fun logOut(soft: Boolean = true)
+  fun refreshDiscordBotPresence()
 
   /* --------------- ENCRYPTION --------------- */
   suspend fun generateRecoveryCode(): Pair<String, String>
@@ -306,6 +310,9 @@ internal class ApiInterfaceImpl(
   private val _encryptionIsInitializing: MutableStateFlow<Boolean> = MutableStateFlow(false)
   override val encryptionIsInitializing: StateFlow<Boolean> = _encryptionIsInitializing
 
+  private val _discordBotActive = MutableStateFlow(false)
+  override val discordBotActive: StateFlow<Boolean> = _discordBotActive
+
   private var apiEndpoint: String = app.interfold.app.Settings.DEFAULT_API_ENDPOINT + "/api"
 
   @OptIn(ExperimentalEncodingApi::class)
@@ -369,6 +376,17 @@ internal class ApiInterfaceImpl(
     _initComplete.tryEmit(false)
     token.value = ""
     socketSession?.disconnect()
+  }
+
+  override fun refreshDiscordBotPresence() {
+    launchIO {
+      val presence = runCatching {
+        get(apiEndpoint, null, "settings/discord-bot")
+          .body<APIResponse<DiscordBotPresence>>()
+          .data
+      }.getOrNull()
+      _discordBotActive.value = presence?.active == true
+    }
   }
 
   override suspend fun generateRecoveryCode(): Pair<String, String> {
