@@ -63,6 +63,11 @@ internal data class TestPrincipal(
 /** Filled by wasm browser tests when Gradle injects a JVM-minted token. */
 internal var preMintedTestPrincipal: TestPrincipal? = null
 
-private const val REDIRECT_COOKIE_NAME = "octocon_auth_redirect_uri"
+internal const val REDIRECT_COOKIE_NAME = "octocon_auth_redirect_uri"
 
-private const val REDIRECT_PLACEHOLDER = "https://test.invalid/auth/done"
+internal const val REDIRECT_PLACEHOLDER = "https://test.invalid/auth/done"
+
+/** Dummy client id so the in-memory image registers the Google challenge scheme. */
+internal const val TEST_GOOGLE_OAUTH_CLIENT_ID = "interfold-test-google-client"
+
+internal const val TEST_GOOGLE_EMAIL = "google-it@example.com"

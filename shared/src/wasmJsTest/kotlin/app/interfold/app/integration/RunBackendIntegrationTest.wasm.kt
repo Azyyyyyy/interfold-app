@@ -1,35 +1,51 @@
 package app.interfold.app.integration
 
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.promise
+import kotlinx.coroutines.withTimeout
 import kotlin.js.ExperimentalWasmJsInterop
+import kotlin.js.Promise
 import kotlin.time.Duration
 
+@OptIn(DelicateCoroutinesApi::class)
 internal fun runBackendIntegrationTest(
   timeout: Duration,
   block: suspend (baseUrl: String) -> Unit,
-) {
-  // Returning without running the body would count as a pass. karma.config.d
-  // wraps Mocha's it() and calls this.skip() when no URL is injected, so
-  // Gradle records these as skipped; this early return only avoids hitting
-  // the network if that wrap races the test body.
-  val url = wasmBackendUrlOrSkip() ?: return
-  runTest(timeout = timeout) { block(url) }
+): Promise<JsAny?> {
+  // Mocha waits on a returned Promise. runTest's TestResult does that too,
+  // but its virtual scheduler turns withTimeout/delay into instant time and
+  // Dispatchers.Default is not the browser thread Ktor fetch needs.
+  val url = wasmBackendUrlOrSkip()
+  return GlobalScope.promise {
+    if (url == null) return@promise null
+    withTimeout(timeout) { block(url) }
+    null
+  }
 }
 
 @OptIn(ExperimentalWasmJsInterop::class)
-@JsFun("() => (typeof globalThis.__INTERFOLD_BACKEND_URL__ === 'string' ? globalThis.__INTERFOLD_BACKEND_URL__ : '')")
+@JsFun("() => { var v = globalThis['__INTERFOLD_BACKEND_URL__']; return (typeof v === 'string' ? v : ''); }")
 private external fun injectedBackendUrl(): String
 
 @OptIn(ExperimentalWasmJsInterop::class)
-@JsFun("() => (typeof globalThis.__INTERFOLD_BACKEND_TOKEN__ === 'string' ? globalThis.__INTERFOLD_BACKEND_TOKEN__ : '')")
+@JsFun("() => { var v = globalThis['__INTERFOLD_BACKEND_TOKEN__']; return (typeof v === 'string' ? v : ''); }")
 private external fun injectedBackendToken(): String
 
 @OptIn(ExperimentalWasmJsInterop::class)
-@JsFun("() => (typeof globalThis.__INTERFOLD_BACKEND_SYSTEM_ID__ === 'string' ? globalThis.__INTERFOLD_BACKEND_SYSTEM_ID__ : '')")
+@JsFun("() => { var v = globalThis['__INTERFOLD_BACKEND_SYSTEM_ID__']; return (typeof v === 'string' ? v : ''); }")
 private external fun injectedBackendSystemId(): String
 
 @OptIn(ExperimentalWasmJsInterop::class)
-@JsFun("() => (globalThis.__INTERFOLD_REQUIRE_BACKEND__ === true || globalThis.__INTERFOLD_REQUIRE_BACKEND__ === '1' || globalThis.__INTERFOLD_REQUIRE_BACKEND__ === 'true')")
+@JsFun("() => { var v = globalThis['__INTERFOLD_BACKEND_TOKEN_A__']; return (typeof v === 'string' ? v : ''); }")
+private external fun injectedBackendTokenA(): String
+
+@OptIn(ExperimentalWasmJsInterop::class)
+@JsFun("() => { var v = globalThis['__INTERFOLD_BACKEND_SYSTEM_ID_A__']; return (typeof v === 'string' ? v : ''); }")
+private external fun injectedBackendSystemIdA(): String
+
+@OptIn(ExperimentalWasmJsInterop::class)
+@JsFun("() => { var v = globalThis['__INTERFOLD_REQUIRE_BACKEND__']; return v === true || v === '1' || v === 'true'; }")
 private external fun requireBackend(): Boolean
 
 private fun wasmBackendUrlOrSkip(): String? {
@@ -47,4 +63,11 @@ private fun wasmBackendUrlOrSkip(): String? {
       "Run :shared:wasmJsBrowserIntegrationTest (not :shared:wasmJsBrowserTest)."
   }
   return null
+}
+
+internal fun injectedFronterPrincipal(): TestPrincipal? {
+  val token = injectedBackendTokenA().trim()
+  val systemId = injectedBackendSystemIdA().trim()
+  if (token.isEmpty()) return null
+  return TestPrincipal(token = token, scopedSystemId = systemId)
 }

@@ -1,7 +1,7 @@
 package app.interfold.app.api
 
 import app.interfold.app.utils.globalSerializer
-import app.interfold.app.utils.includeCredentials
+import app.interfold.app.utils.installApiOriginCredentials
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.js.Js
 import io.ktor.client.plugins.HttpTimeout
@@ -12,12 +12,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 
 actual val client: HttpClient = HttpClient(Js) {
-  // CF_Authorization is HttpOnly. fetch attaches it only when credentials are included.
-  engine {
-    configureRequest {
-      includeCredentials()
-    }
-  }
+  // Cookies (CF_Authorization) only for the configured API origin. Always-on
+  // `credentials: include` is rejected when CORS is `*` (Karma → in-memory API).
+  installApiOriginCredentials()
   install(WebSockets)
   install(ContentNegotiation) {
     json(globalSerializer)
